@@ -1,48 +1,10 @@
-"""Push updates to LDAP.
-
-Update LDAP server to represent identity and membership relations stated on Insightly.
-
-Attributes:
-    SDA: Constant representing the name of the SDA category on Insightly.
-    FPA: Constant representing the name of the FPA category on Insightly.
-    FPA_CRA: Constant representing the name of the FPA with CRA category on Insightly.
-    OS_TENANT: Constant representing the name of the OpenStack tenant category on Insightly.
-    PIPELINE_NAME: Constant representing the name of the Project execution pipeline on Insightly.
-
-    ACTION_CREATE: Constant representing the create key for the Action function.
-    ACTION_DELETE: Constant representing the delete key for the Action function.
-    ACTION_UPDATE: Constant representing the update key for the Action function.
-"""
-import logging
+"""Push updates to LDAP."""
 import ldap as _ldap
-import insightly_updater as _updater
-import canned_mailer as _mailer
+import logging
+from __init__ import sanitize
 from unidecode import unidecode
-
-SDA = 'SDA'
-FPA = 'FPA'
-FPA_CRA = 'FPA (CRA)'
-OS_TENANT = 'OpenStack Tenant'
-PIPELINE_NAME = 'Project execution'
-
-ACTION_CREATE = 'create'
-ACTION_DELETE = 'delete'
-ACTION_UPDATE = 'update'
-
-_LDAP_TREE = {'accounts': "ou=accounts,dc=forgeservicelab,dc=fi",
-              'projects': "ou=projects,dc=forgeservicelab,dc=fi",
-              'admins': "cn=ldap_admins,ou=roles,dc=forgeservicelab,dc=fi"}
-
-_PROTECTED_ACCOUNTS = ['binder', 'pwdchanger']
-
-_ALL_OTHER_GROUPS_FILTER = '(&(|(objectClass=groupOfNames)\
-                                (objectClass=groupOfUniqueNames))\
-                              (|(member=cn={user_cn},%(s)s)\
-                                (uniqueMember=cn={user_cn},%(s)s))\
-                              (!(cn:dn:={project_cn})))'.replace(' ', '') % {'s': _LDAP_TREE['accounts']}
-
-_PLACEHOLDER_NAME = 'FirstName'
-_PLACEHOLDER_SN = 'LastName'
+from canned_mailer import CannedMailer
+from insightly_updater import InsightlyUpdater
 
 
 class ForgeLDAP:
@@ -65,7 +27,7 @@ class ForgeLDAP:
             pwd (str): The password for the specified user.
             host (str): The FQDN or IP of the host running the LDAP server. Connection uses ldaps protocol.
         """
-        dn = 'cn=%s,%s' % (user, _LDAP_TREE['accounts'])
+        dn = 'cn=%s,%s' % (user, LDAPUpdater._LDAP_TREE['accounts'])
         _ldap.set_option(_ldap.OPT_X_TLS_REQUIRE_CERT, _ldap.OPT_X_TLS_ALLOW)
         self._c = _ldap.initialize("ldaps://%s" % host)
         self.username = user
@@ -144,259 +106,297 @@ class ForgeLDAP:
             logging.error(err)
 
 
-def _parseName(name):
-    """Return the first element of a compound name that is not a known particle.
+class LDAPUpdater:
 
-    Args:
-        name (str): The name to be parsed.
+    """Update LDAP server to represent identity and membership relations stated on Insightly.
 
-    Returns:
-        str: The transliterated first non-particle element of a name, capped to 10 characters.
+    Attributes:
+        SDA: Constant representing the name of the SDA category on Insightly.
+        FPA: Constant representing the name of the FPA category on Insightly.
+        FPA_CRA: Constant representing the name of the FPA with CRA category on Insightly.
+        OS_TENANT: Constant representing the name of the OpenStack tenant category on Insightly.
+        PIPELINE_NAME: Constant representing the name of the Project execution pipeline on Insightly.
+
+        ACTION_CREATE: Constant representing the create key for the Action function.
+        ACTION_DELETE: Constant representing the delete key for the Action function.
+        ACTION_UPDATE: Constant representing the update key for the Action function.
     """
-    PARTICLES = ['de', 'della', 'von', 'und']
-    SPECIAL_CHARS = ['\'', '.', '!']
 
-    splitName = reduce(list.__add__, map(lambda n: n.split('-'), name.split()))
+    SDA = 'SDA'
+    FPA = 'FPA'
+    FPA_CRA = 'FPA (CRA)'
+    OS_TENANT = 'OpenStack Tenant'
+    PIPELINE_NAME = 'Project execution'
 
-    try:
-        while splitName[0].lower() in PARTICLES:
-            splitName.pop(0)
-    except IndexError:
-        pass
+    ACTION_CREATE = 'create'
+    ACTION_DELETE = 'delete'
+    ACTION_UPDATE = 'update'
 
-    return unidecode(filter(lambda c: c not in SPECIAL_CHARS,
-                            splitName[0].decode('utf-8').lower()[:10])) if splitName else None
+    _LDAP_TREE = {'accounts': "ou=accounts,dc=forgeservicelab,dc=fi",
+                  'projects': "ou=projects,dc=forgeservicelab,dc=fi",
+                  'admins': "cn=ldap_admins,ou=roles,dc=forgeservicelab,dc=fi"}
 
+    _PROTECTED_ACCOUNTS = ['binder', 'pwdchanger']
 
-def _ldapCN(userID, ldap_conn):
-    return ldap_conn.ldap_search(_LDAP_TREE['accounts'], _ldap.SCOPE_ONELEVEL,
-                                 filterstr='employeeNumber=%s' % userID,
-                                 attrsonly=1)[0][0]
+    _ALL_OTHER_GROUPS_FILTER = '(&(|(objectClass=groupOfNames)\
+                                    (objectClass=groupOfUniqueNames))\
+                                  (|(member=cn={user_cn},%(s)s)\
+                                    (uniqueMember=cn={user_cn},%(s)s))\
+                                  (!(cn:dn:={project_cn})))'.replace(' ', '') % {'s': _LDAP_TREE['accounts']}
 
+    _PLACEHOLDER_NAME = 'FirstName'
+    _PLACEHOLDER_SN = 'LastName'
 
-def _createCN(user, ldap_conn):
-    firstName = None if user[2][1][0] is _PLACEHOLDER_NAME else _parseName(user[2][1][0])
-    lastName = None if user[1][1][0] is _PLACEHOLDER_SN else _parseName(user[1][1][0])
+    def __init__(self):
+        """Initialize instance."""
+        self.mailer = CannedMailer()
 
-    cn = '.'.join(filter(lambda n: n, [firstName, lastName]))
+    def _parseName(self, name):
+        """Return the first element of a compound name that is not a known particle.
 
-    suffix = 0
-    while ldap_conn.ldap_search('cn=%s,%s' % (cn, _LDAP_TREE['accounts']), _ldap.SCOPE_BASE, attrsonly=1):
-        cn = '%s.%s' % (cn[:-2], suffix)
-        suffix += 1
+        Args:
+            name (str): The name to be parsed.
 
-    return cn
+        Returns:
+            str: The transliterated first non-particle element of a name, capped to 10 characters.
+        """
+        PARTICLES = ['de', 'della', 'von', 'und']
+        SPECIAL_CHARS = ['\'', '.', '!']
 
+        splitName = reduce(list.__add__, map(lambda n: n.split('-'), name.split()))
 
-def _pruneAccounts(ldap_conn):
-    map(ldap_conn.ldap_delete,
-        map(lambda dn: dn[0],
-            filter(lambda a: 'memberOf' not in a[1].keys() and not any(cn in a[0] for cn in _PROTECTED_ACCOUNTS),
-                   ldap_conn.ldap_search(_LDAP_TREE['accounts'],
-                                         _ldap.SCOPE_ONELEVEL,
-                                         attrlist=['memberOf']))))
+        try:
+            while splitName[0].lower() in PARTICLES:
+                splitName.pop(0)
+        except IndexError:
+            pass
 
+        return unidecode(filter(lambda c: c not in SPECIAL_CHARS,
+                                splitName[0].decode('utf-8').lower()[:10])) if splitName else None
 
-def _createRecord(project, ldap_conn):
-    return filter(lambda r: len(r[1]), [
-        ('objectClass', ['groupOfNames']),
-        ('cn', [project['cn']]),
-        ('o', [project['o']]),
-        ('owner', map(lambda o: _ldapCN(o['uid'], ldap_conn), project['owner'])),
-        ('seeAlso', map(lambda a: _ldapCN(a['uid'], ldap_conn), project['seeAlso'])),
-        ('member', map(lambda m: _ldapCN(m['uid'], ldap_conn), project['members'])),
-        ('description', ['type:%s' % project['description']])
-    ])
+    def _ldapCN(self, userID, ldap_conn):
+        return ldap_conn.ldap_search(self._LDAP_TREE['accounts'], _ldap.SCOPE_ONELEVEL,
+                                     filterstr='employeeNumber=%s' % userID,
+                                     attrsonly=1)[0][0]
 
+    def _createCN(self, user, ldap_conn):
+        firstName = None if user[2][1][0] is self._PLACEHOLDER_NAME else self._parseName(user[2][1][0])
+        lastName = None if user[1][1][0] is self._PLACEHOLDER_SN else self._parseName(user[1][1][0])
 
-def _createTenantRecord(tenant, ldap_conn):
-    record = _createRecord(tenant, ldap_conn)
-    record = map(lambda r: r if r[0] != 'objectClass' else (r[0], ['groupOfUniqueNames']), record)
-    if len(record) == 7:
-        record = map(lambda r: r if r[0] != 'owner' else ('uniqueMember', r[1]), record)
-        record.pop(4)
-        record.pop(4)
-    else:
-        record = map(lambda r: r if r[0] != 'member' else ('uniqueMember', r[1]), record)
-    return record
+        cn = '.'.join(filter(lambda n: n, [firstName, lastName]))
 
+        suffix = 0
+        while ldap_conn.ldap_search('cn=%s,%s' % (cn, self._LDAP_TREE['accounts']), _ldap.SCOPE_BASE, attrsonly=1):
+            cn = '%s.%s' % (cn[:-2], suffix)
+            suffix += 1
 
-def _createOrUpdate(member_list, ldap_conn):
-    user_records = map(lambda c: filter(lambda r: len(r[1]),
-                                        [('objectClass', ['inetOrgPerson']),
-                                         ('sn', [c['sn'] if c['sn'] else _PLACEHOLDER_SN]),
-                                         ('givenName', [c['givenName'] if c['givenName'] else _PLACEHOLDER_NAME]),
-                                         ('displayName', [c['displayName']]),
-                                         ('mail', c['mail']),
-                                         ('mobile', c['mobile']),
-                                         ('employeeType', 'hidden' if 'True' in c['isHidden'] else ''),
-                                         ('employeeNumber', [c['uid']])]), member_list)
+        return cn
 
-    new_records = filter(lambda m: not ldap_conn.ldap_search(_LDAP_TREE['accounts'],
-                                                             _ldap.SCOPE_ONELEVEL,
-                                                             filterstr='employeeNumber=%s' % m[-1][1][0],
-                                                             attrsonly=1),
-                         user_records)
+    def _pruneAccounts(self, ldap_conn):
+        map(ldap_conn.ldap_delete,
+            map(lambda dn: dn[0],
+                filter(lambda a: 'memberOf' not in a[1].keys() and not any(cn in a[0] for cn in
+                                                                           self._PROTECTED_ACCOUNTS),
+                       ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
+                                             _ldap.SCOPE_ONELEVEL,
+                                             attrlist=['memberOf']))))
 
-    map(lambda c: ldap_conn.ldap_add('cn=%s,%s' % (_createCN(c, ldap_conn), _LDAP_TREE['accounts']), c), new_records)
+    def _createRecord(self, project, ldap_conn):
+        return filter(lambda r: len(r[1]), [
+            ('objectClass', ['groupOfNames']),
+            ('cn', [project['cn']]),
+            ('o', [project['o']]),
+            ('owner', map(lambda o: self._ldapCN(o['uid'], ldap_conn), project['owner'])),
+            ('seeAlso', map(lambda a: self._ldapCN(a['uid'], ldap_conn), project['seeAlso'])),
+            ('member', map(lambda m: self._ldapCN(m['uid'], ldap_conn), project['members'])),
+            ('description', ['type:%s' % project['description']])
+        ])
 
-    map(lambda u: ldap_conn.ldap_update('%s' % _ldapCN(u[-1][1][0], ldap_conn),
-                                        map(lambda v: (_ldap.MOD_REPLACE, v[0], v[1]), u)),
-        filter(lambda m: cmp(dict(m),
-                             (ldap_conn.ldap_search(_LDAP_TREE['accounts'],
-                                                    _ldap.SCOPE_ONELEVEL,
-                                                    filterstr='employeeNumber=%s' % m[-1][1][0],
-                                                    attrlist=['displayName', 'objectClass', 'employeeType', 'mobile',
-                                                              'employeeNumber', 'sn', 'mail', 'givenName']))[0][1]),
-               user_records))
-    return new_records
+    def _createTenantRecord(self, tenant, ldap_conn):
+        record = self._createRecord(tenant, ldap_conn)
+        record = map(lambda r: r if r[0] != 'objectClass' else (r[0], ['groupOfUniqueNames']), record)
+        if len(record) == 7:
+            record = map(lambda r: r if r[0] != 'owner' else ('uniqueMember', r[1]), record)
+            record.pop(4)
+            record.pop(4)
+        else:
+            record = map(lambda r: r if r[0] != 'member' else ('uniqueMember', r[1]), record)
+        return record
 
+    def _createOrUpdate(self, member_list, ldap_conn):
+        user_records = map(lambda c: filter(lambda r: len(r[1]),
+                                            [('objectClass', ['inetOrgPerson']),
+                                             ('sn', [c['sn'] if c['sn'] else self._PLACEHOLDER_SN]),
+                                             ('givenName', [c['givenName'] if c['givenName'] else
+                                                            self._PLACEHOLDER_NAME]),
+                                             ('displayName', [c['displayName']]),
+                                             ('mail', c['mail']),
+                                             ('mobile', c['mobile']),
+                                             ('employeeType', 'hidden' if 'True' in c['isHidden'] else ''),
+                                             ('employeeNumber', [c['uid']])]), member_list)
 
-def _checkAndDelete(member_list, project_cn, ldap_conn):
-    map(lambda d: ldap_conn.ldap_delete(d['cn'] + _LDAP_TREE['accounts']),
-        filter(lambda m: not ldap_conn.ldap_search(_LDAP_TREE['projects'],
-                                                   _ldap.SCOPE_SUBTREE,
-                                                   filterstr=_ALL_OTHER_GROUPS_FILTER.format(user_cn=m['cn'],
-                                                                                             project_cn=project_cn)),
-               member_list))
+        new_records = filter(lambda m: not ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
+                                                                 _ldap.SCOPE_ONELEVEL,
+                                                                 filterstr='employeeNumber=%s' % m[-1][1][0],
+                                                                 attrsonly=1),
+                             user_records)
 
+        map(lambda c: ldap_conn.ldap_add('cn=%s,%s' %
+                                         (self._createCN(c, ldap_conn), self._LDAP_TREE['accounts']), c), new_records)
 
-def _sendNewAccountEmails(new_accounts, project_type, ldap_conn):
-    map(lambda d: map(lambda t: _mailer.sendCannedMail(t,
-                                                       _mailer.CANNED_MESSAGES['new_devel_account'] if
-                                                       project_type in [SDA, OS_TENANT] else
-                                                       _mailer.CANNED_MESSAGES['new_partner_account'], d['cn'][0]),
-                      d['mail']),
-        [record[1] for sublist in
-         map(lambda a: ldap_conn.ldap_search(_LDAP_TREE['accounts'], _ldap.SCOPE_ONELEVEL,
-                                             filterstr='employeeNumber=%s' % a, attrlist=['cn', 'mail']),
-             map(lambda r: filter(lambda a: a[0] == 'employeeNumber', r)[0][1][0], new_accounts))
-         for record in sublist])
+        map(lambda u: ldap_conn.ldap_update('%s' % self._ldapCN(u[-1][1][0], ldap_conn),
+                                            map(lambda v: (_ldap.MOD_REPLACE, v[0], v[1]), u)),
+            filter(lambda m: cmp(dict(m),
+                                 (ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
+                                                        _ldap.SCOPE_ONELEVEL,
+                                                        filterstr='employeeNumber=%s' % m[-1][1][0],
+                                                        attrlist=['displayName', 'objectClass', 'employeeType',
+                                                                  'mobile', 'employeeNumber', 'sn',
+                                                                  'mail', 'givenName']))[0][1]),
+                   user_records))
+        return new_records
 
+    def _checkAndDelete(self, member_list, project_cn, ldap_conn):
+        map(lambda d: ldap_conn.ldap_delete(d['cn'] + self._LDAP_TREE['accounts']),
+            filter(lambda m: not ldap_conn.ldap_search(self._LDAP_TREE['projects'],
+                                                       _ldap.SCOPE_SUBTREE,
+                                                       filterstr=self._ALL_OTHER_GROUPS_FILTER.format(
+                user_cn=m['cn'],
+                project_cn=project_cn)),
+            member_list))
 
-def _addAndNotify(dn, record, ldap_conn):
-    ldap_conn.ldap_add(dn, record)
-    map(lambda e: _mailer.sendCannedMail(e, _mailer.CANNED_MESSAGES['added_to_tenant'], filter(lambda r: r[0] == 'cn',
-                                                                                               record)[0][1][0]),
-        map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail']),
-            filter(lambda m: m[0] == 'uniqueMember', record)[0][1])[0][0][1]['mail'])
+    def _sendNewAccountEmails(self, new_accounts, project_type, ldap_conn):
+        map(lambda d: map(lambda t: self.mailer.sendCannedMail(t,
+                                                               self.mailer.CANNED_MESSAGES['new_devel_account'] if
+                                                               project_type in [self.SDA, self.OS_TENANT] else
+                                                               self.mailer.CANNED_MESSAGES['new_partner_account'],
+                                                               d['cn'][0]),
+                          d['mail']),
+            [record[1] for sublist in
+             map(lambda a: ldap_conn.ldap_search(self._LDAP_TREE['accounts'], _ldap.SCOPE_ONELEVEL,
+                                                 filterstr='employeeNumber=%s' % a, attrlist=['cn', 'mail']),
+                 map(lambda r: filter(lambda a: a[0] == 'employeeNumber', r)[0][1][0], new_accounts))
+             for record in sublist])
 
-
-def _createTenants(tenant_list, project, ldap_conn):
-    if tenant_list:
-        map(lambda t: _sendNewAccountEmails(_createOrUpdate(t['members'], ldap_conn), OS_TENANT, ldap_conn),
-            tenant_list)
-        map(lambda c: _addAndNotify('cn=%s,cn=%s,%s' % (c[1][1][0], project['cn'], _LDAP_TREE['projects']),
-                                    c, ldap_conn),
-            map(lambda r: _createTenantRecord(r, ldap_conn), tenant_list))
-    else:
-        insightly_tenant = _updater.createDefaultTenantFor(project)
-        tenant = _createTenantRecord(project, ldap_conn)
-        tenant[2] = ('o', [str(insightly_tenant['PROJECT_ID'])])
-        _createOrUpdate(project['owner'], ldap_conn)
-        ldap_conn.ldap_add('cn=%(cn)s,cn=%(cn)s,%(suf)s' % {'cn': project['cn'], 'suf': _LDAP_TREE['projects']},
-                           tenant)
-        map(lambda a: map(lambda m: _mailer.sendCannedMail(m, _mailer.CANNED_MESSAGES['added_to_tenant'],
-                                                           project['cn']),
-                          a['mail']),
-            project['members'])
-
-
-def _create(project, project_type, ldap_conn):
-    _sendNewAccountEmails(_createOrUpdate(project['members'], ldap_conn), project_type, ldap_conn)
-
-    ldap_conn.ldap_add(
-        'cn=%s,%s' % (project['cn'], _LDAP_TREE['projects']), _createRecord(project, ldap_conn))
-
-    if project_type in [SDA, FPA_CRA]:
-        _createTenants(project['tenants'], project, ldap_conn)
-
-    _updater.updateProject(project, status=_updater.STATUS_RUNNING)
-
-    map(lambda a: map(lambda m: _mailer.sendCannedMail(m, _mailer.CANNED_MESSAGES['notify_admin_contact'],
-                                                       a['displayName']),
-                      a['mail']),
-        project['seeAlso'])
-
-    map(lambda a: map(lambda m: _mailer.sendCannedMail(m, _mailer.CANNED_MESSAGES['added_to_project'], project['cn']),
-                      a['mail']),
-        project['members'])
-
-
-def _updateAndNotify(dn, record, ldap_conn):
-    ldap_record = ldap_conn.ldap_search(dn, _ldap.SCOPE_BASE)[0][1]
-    dict_record = dict(map(lambda r: (r[1], r[2]), record)) if len(record[0]) is 3 else dict(record)
-
-    if cmp(dict_record, ldap_record):
-        ldap_conn.ldap_update(dn, record)
-        map(lambda e: _mailer.sendCannedMail(e, _mailer.CANNED_MESSAGES['added_to_tenant'] if any(OS_TENANT in
-                                             s for s in dict_record['description']) else
-                                             _mailer.CANNED_MESSAGES['added_to_project'], dict_record['cn'][0]),
+    def _addAndNotify(self, dn, record, ldap_conn):
+        ldap_conn.ldap_add(dn, record)
+        map(lambda e: self.mailer.sendCannedMail(e, self.mailer.CANNED_MESSAGES['added_to_tenant'],
+                                                 filter(lambda r: r[0] == 'cn', record)[0][1][0]),
             map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail']),
-                filter(lambda m: m not in (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
-                                           else ldap_record['member']),
-                       dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
-                       else dict_record['member']))[0][0][1]['mail'])
+                filter(lambda m: m[0] == 'uniqueMember', record)[0][1])[0][0][1]['mail'])
 
+    def _createTenants(self, tenant_list, project, ldap_conn):
+        if tenant_list:
+            map(lambda t: self._sendNewAccountEmails(self._createOrUpdate(t['members'], ldap_conn),
+                                                     self.OS_TENANT, ldap_conn), tenant_list)
+            map(lambda c: self._addAndNotify('cn=%s,cn=%s,%s' % (c[1][1][0], project['cn'],
+                                                                 self._LDAP_TREE['projects']), c, ldap_conn),
+                map(lambda r: self._createTenantRecord(r, ldap_conn), tenant_list))
+        else:
+            insightly_tenant = InsightlyUpdater.createDefaultTenantFor(project)
+            tenant = self._createTenantRecord(project, ldap_conn)
+            tenant[2] = ('o', [str(insightly_tenant['PROJECT_ID'])])
+            self._createOrUpdate(project['owner'], ldap_conn)
+            ldap_conn.ldap_add('cn=%(cn)s,cn=%(cn)s,%(sf)s' % {'cn': project['cn'], 'sf': self._LDAP_TREE['projects']},
+                               tenant)
+            map(lambda a: map(lambda m: self.mailer.sendCannedMail(m, self.mailer.CANNED_MESSAGES['added_to_tenant'],
+                                                                   project['cn']),
+                              a['mail']),
+                project['members'])
 
-def _updateTenants(tenant_list, project, ldap_conn):
-    map(lambda t: _sendNewAccountEmails(_createOrUpdate(t['members'], ldap_conn), OS_TENANT, ldap_conn), tenant_list)
+    def _create(self, project, project_type, ldap_conn):
+        self._sendNewAccountEmails(self._createOrUpdate(project['members'], ldap_conn), project_type, ldap_conn)
 
-    new_tenants = filter(lambda t: not ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
-                                                             (t['cn'], project['cn'], _LDAP_TREE['projects']),
-                                                             _ldap.SCOPE_BASE), tenant_list)
-    if new_tenants:
-        _createTenants(new_tenants, project, ldap_conn)
+        ldap_conn.ldap_add(
+            'cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']), self._createRecord(project, ldap_conn))
 
-    map(lambda u: _updateAndNotify('cn=%s,cn=%s,%s' % (u[1][2][0], project['cn'], _LDAP_TREE['projects']),
-                                   u, ldap_conn),
-        map(lambda tr: map(lambda r: (_ldap.MOD_REPLACE, r[0], r[1]), _createTenantRecord(tr, ldap_conn)),
-            filter(lambda t: ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
-                                                   (t['cn'], project['cn'], _LDAP_TREE['projects']),
-                                                   _ldap.SCOPE_BASE), tenant_list)))
+        if project_type in [self.SDA, self.FPA_CRA]:
+            self._createTenants(project['tenants'], project, ldap_conn)
 
+        InsightlyUpdater.updateProject(project, status=InsightlyUpdater.STATUS_RUNNING)
 
-def _update(project, project_type, ldap_conn):
-    ldap_record = ldap_conn.ldap_search('cn=%s,%s' % (project['cn'], _LDAP_TREE['projects']), _ldap.SCOPE_BASE)
+        map(lambda a: map(lambda m: self.mailer.sendCannedMail(m, self.mailer.CANNED_MESSAGES['notify_admin_contact'],
+                                                               a['displayName']),
+                          a['mail']),
+            project['seeAlso'])
 
-    if ldap_record:
-        _sendNewAccountEmails(_createOrUpdate(project['members'], ldap_conn), project_type, ldap_conn)
-        _updateAndNotify('cn=%s,%s' % (project['cn'], _LDAP_TREE['projects']),
-                         map(lambda t: (_ldap.MOD_REPLACE, t[0], t[1]), _createRecord(project, ldap_conn)), ldap_conn)
-    else:
-        _create(project, project_type, ldap_conn)
+        map(lambda a: map(lambda m: self.mailer.sendCannedMail(m, self.mailer.CANNED_MESSAGES['added_to_project'],
+                                                               project['cn']), a['mail']), project['members'])
 
-    if project_type in [SDA, FPA_CRA]:
-        _updateTenants(project['tenants'], project, ldap_conn)
+    def _updateAndNotify(self, dn, record, ldap_conn):
+        ldap_record = ldap_conn.ldap_search(dn, _ldap.SCOPE_BASE)[0][1]
+        dict_record = dict(map(lambda r: (r[1], r[2]), record)) if len(record[0]) is 3 else dict(record)
 
+        if cmp(dict_record, ldap_record):
+            ldap_conn.ldap_update(dn, record)
+            map(lambda e: self.mailer.sendCannedMail(e,
+                                                     self.mailer.CANNED_MESSAGES['added_to_tenant'] if any
+                                                     (self.OS_TENANT in s for s in dict_record['description']) else
+                                                     self.mailer.CANNED_MESSAGES['added_to_project'],
+                                                     dict_record['cn'][0]),
+                map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail']),
+                    filter(lambda m: m not in (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
+                                               else ldap_record['member']),
+                           dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
+                           else dict_record['member']))[0][0][1]['mail'])
 
-def _delete(project, project_type, ldap_conn):
-    _checkAndDelete(project['members'], project['cn'], ldap_conn)
+    def _updateTenants(self, tenant_list, project, ldap_conn):
+        map(lambda t: self._sendNewAccountEmails(self._createOrUpdate(t['members'], ldap_conn),
+                                                 self.OS_TENANT, ldap_conn), tenant_list)
 
-    map(lambda tenant: ldap_conn.ldap_delete(tenant[0]),
-        ldap_conn.ldap_search(project['cn'] + _LDAP_TREE['projects'], _ldap.SCOPE_SUBORDINATE))
+        new_tenants = filter(lambda t: not ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
+                                                                 (t['cn'], project['cn'], self._LDAP_TREE['projects']),
+                                                                 _ldap.SCOPE_BASE), tenant_list)
+        if new_tenants:
+            self._createTenants(new_tenants, project, ldap_conn)
 
-    ldap_conn.ldap_delete(project['cn'] + _LDAP_TREE['projects'])
+        map(lambda u: self._updateAndNotify('cn=%s,cn=%s,%s' %
+                                            (u[1][2][0], project['cn'], self._LDAP_TREE['projects']), u, ldap_conn),
+            map(lambda tr: map(lambda r: (_ldap.MOD_REPLACE, r[0], r[1]), self._createTenantRecord(tr, ldap_conn)),
+                filter(lambda t: ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
+                                                       (t['cn'], project['cn'], self._LDAP_TREE['projects']),
+                                                       _ldap.SCOPE_BASE), tenant_list)))
 
-    _updater.updateProject(project, updateStage=False, status=_updater.STATUS_COMPLETED)
+    def _update(self, project, project_type, ldap_conn):
+        ldap_record = ldap_conn.ldap_search('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']),
+                                            _ldap.SCOPE_BASE)
 
+        if ldap_record:
+            self._sendNewAccountEmails(self._createOrUpdate(project['members'], ldap_conn), project_type, ldap_conn)
+            self._updateAndNotify('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']),
+                                  map(lambda t: (_ldap.MOD_REPLACE, t[0], t[1]),
+                                      self._createRecord(project, ldap_conn)), ldap_conn)
+        else:
+            self._create(project, project_type, ldap_conn)
 
-_actions = {
-    ACTION_CREATE: _create,
-    ACTION_DELETE: _delete,
-    ACTION_UPDATE: _update
-}
+        if project_type in [self.SDA, self.FPA_CRA]:
+            self._updateTenants(project['tenants'], project, ldap_conn)
 
+    def _delete(self, project, project_type, ldap_conn):
+        self._checkAndDelete(project['members'], project['cn'], ldap_conn)
 
-def Action(action, data_list, ldap_conn):
-    """Perform a CRUD action against LDAP.
+        map(lambda tenant: ldap_conn.ldap_delete(tenant[0]),
+            ldap_conn.ldap_search(project['cn'] + self._LDAP_TREE['projects'], _ldap.SCOPE_SUBORDINATE))
 
-    Triggers the generation of LDAP payload and executes the requested action against the parameter LDAP connection.
+        ldap_conn.ldap_delete(project['cn'] + self._LDAP_TREE['projects'])
 
-    Args:
-        action (str): The action to perform, one of ACTION_CREATE, ACTION_DELETE or ACTION_UPDATE.
-        data_list (List): A list of the elements to use as payload for the CRUD action against LDAP.
-        ldap_conn (ForgeLDAP): An initialized LDAP connection to perform actions against.
-    """
-    map(lambda k: map(lambda p: _actions[action](p, k, ldap_conn), data_list[k]), data_list.keys())
-    _pruneAccounts(ldap_conn)
+        InsightlyUpdater.updateProject(project, updateStage=False, status=InsightlyUpdater.STATUS_COMPLETED)
+
+    _actions = {
+        ACTION_CREATE: _create,
+        ACTION_DELETE: _delete,
+        ACTION_UPDATE: _update
+    }
+
+    def Action(self, action, data_list, ldap_conn):
+        """Perform a CRUD action against LDAP.
+
+        Triggers the generation of LDAP payload and executes the requested action against the LDAP connection.
+
+        Args:
+            action (str): The action to perform, one of ACTION_CREATE, ACTION_DELETE or ACTION_UPDATE.
+            data_list (List): A list of the elements to use as payload for the CRUD action against LDAP.
+            ldap_conn (ForgeLDAP): An initialized LDAP connection to perform actions against.
+        """
+        map(lambda k: map(lambda p: self._actions[action](self, p, k, ldap_conn), data_list[k]), data_list.keys())
+        self._pruneAccounts(ldap_conn)

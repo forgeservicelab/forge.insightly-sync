@@ -2,7 +2,9 @@
 """Fetch identity data from Insightly and synchronize it with LDAP.
 
 Usage:
-    ldapsync.py [-l <ldap_host>] -b <ldap_bind_cn> -p <ldap_bind_pwd> -i <insightly_api_key>
+    ldapsync.py [-l <ldap_host>] -b <ldap_bind_cn> -p <ldap_bind_pwd> -i <insightly_api_key> -U <os_user> -P <os_pass>\
+ -T <os_tenant>
+    ldapsync.py -r <identity_file>
     ldapsync.py -h | --help
 
 Options:
@@ -11,21 +13,21 @@ Options:
     -l --ldap <ldap_host>               LDAP host to connect to [default: localhost].
     -b --bind <ldap_bind_cn>            Username of the LDAP account for binding (needs admin rights).
     -p --password <ldap_bind_pwd>       LDAP binding account password.
+    -U --os_user <os_user>              OpenStack administrator username.
+    -P --os_pass <os_pass>              OpenStack administrator password.
+    -T --os_tenant <os_tenant>          OpenStack tenant for administrator account.
+    -r --resources <identity_file>      A file with the identity resources in the format [long_option_name]=[value].
 """
-import insightly_updater as iu
-import ldap_updater as lu
-import quota_checker as qc
 import logging
+from __init__ import sanitize
+from insightly_updater import InsightlyUpdater
+from ldap_updater import LDAPUpdater, ForgeLDAP
+from quota_checker import QuotaChecker
 from requests import get
-from unidecode import unidecode
 from docopt import docopt
 
 TECH_ROLE = 'Technical Contact'
 ADMIN_ROLE = 'Admin Contact'
-
-
-def sanitize(name):
-    return unidecode(name).replace(' ', '.').replace('\'', '_')
 
 
 def filterStagesByOrder(stage_order_list, stage_list, pipeline_list):
@@ -46,7 +48,7 @@ def filterStagesByOrder(stage_order_list, stage_list, pipeline_list):
     """
     return map(lambda cs: cs['STAGE_ID'],
                filter(lambda s: s['PIPELINE_ID'] in map(lambda p: p['PIPELINE_ID'],
-                                                        filter(lambda q: q['PIPELINE_NAME'] in [lu.PIPELINE_NAME],
+                                                        filter(lambda q: q['PIPELINE_NAME'] in [LU.PIPELINE_NAME],
                                                                pipeline_list)) and
                       s['STAGE_ORDER'] in stage_order_list, stage_list
                       )
@@ -95,25 +97,25 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
     return map(lambda p: {'o': str(p['PROJECT_ID']),
                           'description': project_type,
                           'cn': sanitize(p['PROJECT_NAME']),
-                          'owner': mapContactsToLDAP(map(lambda owner: get('%s%s' % (iu.INSIGHTLY_CONTACTS_URI, owner),
-                                                                           auth=(iu.INSIGHTLY_API_KEY, '')).json(),
+                          'owner': mapContactsToLDAP(map(lambda owner: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI, owner),
+                                                                           auth=(IU.INSIGHTLY_API_KEY, '')).json(),
                                                          map(lambda c: c['CONTACT_ID'],
                                                              filter(lambda o:
                                                                     o['CONTACT_ID'] is not None and
                                                                     TECH_ROLE in str(o['ROLE']),
                                                                     p['LINKS'])))
                                                      )[:1],
-                          'seeAlso': mapContactsToLDAP(map(lambda admin: get('%s%s' % (iu.INSIGHTLY_CONTACTS_URI,
+                          'seeAlso': mapContactsToLDAP(map(lambda admin: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
                                                                                        admin),
-                                                                             auth=(iu.INSIGHTLY_API_KEY, '')).json(),
+                                                                             auth=(IU.INSIGHTLY_API_KEY, '')).json(),
                                                            map(lambda c: c['CONTACT_ID'],
                                                                filter(lambda a: a['CONTACT_ID'] is not None and
                                                                       ADMIN_ROLE in str(a['ROLE']),
                                                                       p['LINKS'])))
                                                        ),
-                          'members': mapContactsToLDAP(map(lambda member: get('%s%s' % (iu.INSIGHTLY_CONTACTS_URI,
+                          'members': mapContactsToLDAP(map(lambda member: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
                                                                                         member),
-                                                                              auth=(iu.INSIGHTLY_API_KEY, '')).json(),
+                                                                              auth=(IU.INSIGHTLY_API_KEY, '')).json(),
                                                            map(lambda c: c['CONTACT_ID'],
                                                                filter(lambda m: m['CONTACT_ID'] is not None,
                                                                       p['LINKS'])))
@@ -125,37 +127,44 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
                                                                   filter(lambda l:
                                                                          l['SECOND_PROJECT_ID'] is not None,
                                                                          p['LINKS'])),
-                                                              tenant_list), lu.OS_TENANT) if tenant_list else [],
+                                                              tenant_list), LU.OS_TENANT) if tenant_list else [],
                           }, project_list) if project_list else []
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
+    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
     arguments = docopt(__doc__)
 
-    iu.INSIGHTLY_API_KEY = arguments['--api-key']
+    if arguments['--resources']:
+        identity_file = file(arguments['--resources'], 'r')
+        map(lambda a: arguments.update([('--'+a.strip()).split('=')]), identity_file.readlines())
+        identity_file.close()
 
-    iu.STAGES = get(iu.INSIGHTLY_PIPELINE_STAGES_URI, auth=(iu.INSIGHTLY_API_KEY, '')).json()
+    IU = InsightlyUpdater(api_key=arguments['--api-key'],
+                          stages=get(InsightlyUpdater.INSIGHTLY_PIPELINE_STAGES_URI, auth=(
+                              arguments['--api-key'], '')).json(),
+                          tenant_category=map(lambda t: t['CATEGORY_ID'],
+                                              filter(lambda c: c['CATEGORY_NAME'] == 'OpenStack Tenant',
+                                                     get(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
+                                                         auth=(arguments['--api-key'], '')).json()))[0])
+    LU = LDAPUpdater()
+    QC = QuotaChecker(arguments['--os_user'], arguments['--os_pass'], arguments['--os_tenant'])
 
-    iu.TENANT_CATEGORY = map(lambda t: t['CATEGORY_ID'],
-                             filter(lambda c: c['CATEGORY_NAME'] == 'OpenStack Tenant',
-                                    get(iu.INSIGHTLY_CATEGORIES_URI, auth=(iu.INSIGHTLY_API_KEY, '')).json()))[0]
-
-    PIPELINES = filter(lambda p: p['PIPELINE_NAME'] in [lu.PIPELINE_NAME],
-                       get(iu.INSIGHTLY_PIPELINES_URI,
-                           auth=(iu.INSIGHTLY_API_KEY, '')).json()
+    PIPELINES = filter(lambda p: p['PIPELINE_NAME'] in [LU.PIPELINE_NAME],
+                       get(IU.INSIGHTLY_PIPELINES_URI,
+                           auth=(IU.INSIGHTLY_API_KEY, '')).json()
                        )
 
     PROJECT_CATEGORIES = dict(map(lambda pc: (pc['CATEGORY_NAME'], pc['CATEGORY_ID']),
-                                  filter(lambda c: c['CATEGORY_NAME'] in [lu.SDA, lu.FPA, lu.FPA_CRA, lu.OS_TENANT],
-                                         get(iu.INSIGHTLY_CATEGORIES_URI, auth=(iu.INSIGHTLY_API_KEY, '')).json())))
+                                  filter(lambda c: c['CATEGORY_NAME'] in [LU.SDA, LU.FPA, LU.FPA_CRA, LU.OS_TENANT],
+                                         get(IU.INSIGHTLY_CATEGORIES_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json())))
 
-    PROJECTS = get(iu.INSIGHTLY_PROJECTS_URI, auth=(iu.INSIGHTLY_API_KEY, '')).json()
+    PROJECTS = get(IU.INSIGHTLY_PROJECTS_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json()
 
-    TENANTS = filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.OS_TENANT], PROJECTS)
+    TENANTS = filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.OS_TENANT], PROJECTS)
 
-    creation_stages = filterStagesByOrder([4], iu.STAGES, PIPELINES)
-    update_stages = filterStagesByOrder([5, 6], iu.STAGES, PIPELINES)
-    deletion_stages = filterStagesByOrder([7], iu.STAGES, PIPELINES)
+    creation_stages = filterStagesByOrder([4], IU.STAGES, PIPELINES)
+    update_stages = filterStagesByOrder([5, 6], IU.STAGES, PIPELINES)
+    deletion_stages = filterStagesByOrder([7], IU.STAGES, PIPELINES)
 
     # Filter projects by relevant pipeline stages.
     projects_to_be_created = filter(lambda p: p['CATEGORY_ID'] in PROJECT_CATEGORIES.values() and
@@ -166,64 +175,64 @@ if __name__ == '__main__':
                                     p['STAGE_ID'] in deletion_stages, PROJECTS)
 
     creation = {
-        lu.SDA: mapProjectsToLDAP(filter(lambda p:
-                                         p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.SDA],
+        LU.SDA: mapProjectsToLDAP(filter(lambda p:
+                                         p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.SDA],
                                          projects_to_be_created),
-                                  lu.SDA, tenant_list=TENANTS),
-        lu.FPA_CRA: mapProjectsToLDAP(filter(lambda p:
-                                             p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.FPA_CRA],
+                                  LU.SDA, tenant_list=TENANTS),
+        LU.FPA_CRA: mapProjectsToLDAP(filter(lambda p:
+                                             p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.FPA_CRA],
                                              projects_to_be_created),
-                                      lu.FPA_CRA, tenant_list=TENANTS),
-        lu.FPA: mapProjectsToLDAP(filter(lambda p:
-                                         p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.FPA],
+                                      LU.FPA_CRA, tenant_list=TENANTS),
+        LU.FPA: mapProjectsToLDAP(filter(lambda p:
+                                         p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.FPA],
                                          projects_to_be_created),
-                                  lu.FPA)
+                                  LU.FPA)
     }
 
     update = {
-        lu.SDA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.SDA],
+        LU.SDA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.SDA],
                                          projects_to_be_updated),
-                                  lu.SDA, tenant_list=TENANTS),
-        lu.FPA_CRA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.FPA_CRA],
+                                  LU.SDA, tenant_list=TENANTS),
+        LU.FPA_CRA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.FPA_CRA],
                                              projects_to_be_updated),
-                                      lu.FPA_CRA, tenant_list=TENANTS),
-        lu.FPA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.FPA],
+                                      LU.FPA_CRA, tenant_list=TENANTS),
+        LU.FPA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.FPA],
                                          projects_to_be_updated),
-                                  lu.FPA)
+                                  LU.FPA)
     }
 
     deletion = {
-        lu.SDA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.SDA],
+        LU.SDA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.SDA],
                                          projects_to_be_deleted),
-                                  lu.SDA, tenant_list=TENANTS),
-        lu.FPA_CRA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.FPA_CRA],
+                                  LU.SDA, tenant_list=TENANTS),
+        LU.FPA_CRA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.FPA_CRA],
                                              projects_to_be_deleted),
-                                      lu.FPA_CRA, tenant_list=TENANTS),
-        lu.FPA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.FPA],
+                                      LU.FPA_CRA, tenant_list=TENANTS),
+        LU.FPA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.FPA],
                                          projects_to_be_deleted),
-                                  lu.FPA)
+                                  LU.FPA)
     }
 
-    ldap_connection = lu.ForgeLDAP(arguments['--bind'], arguments['--password'], arguments['--ldap'])
-    lu.Action(lu.ACTION_CREATE, creation, ldap_connection)
-    lu.Action(lu.ACTION_UPDATE, update, ldap_connection)
-    lu.Action(lu.ACTION_DELETE, deletion, ldap_connection)
+    ldap_connection = ForgeLDAP(arguments['--bind'], arguments['--password'], arguments['--ldap'])
+    LU.Action(LU.ACTION_CREATE, creation, ldap_connection)
+    LU.Action(LU.ACTION_UPDATE, update, ldap_connection)
+    LU.Action(LU.ACTION_DELETE, deletion, ldap_connection)
 
-    qc.enforceQuotas(filter(lambda p: p['PROJECT_ID'] in
+    QC.enforceQuotas(filter(lambda p: p['PROJECT_ID'] in
                             filter(lambda tp: tp,
                                    map(lambda t: t['SECOND_PROJECT_ID'],
                                        [link for sublist in
                                         map(lambda p: p['LINKS'],
-                                            filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.SDA], PROJECTS))
+                                            filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.SDA], PROJECTS))
                                         for link in sublist])),
-                            PROJECTS), lu.SDA)
+                            PROJECTS), LU.SDA)
 
-    qc.enforceQuotas(filter(lambda p: p['PROJECT_ID'] in
+    QC.enforceQuotas(filter(lambda p: p['PROJECT_ID'] in
                             filter(lambda tp: tp,
                                    map(lambda t: t['SECOND_PROJECT_ID'],
                                        [link for sublist in
                                         map(lambda p: p['LINKS'],
-                                            filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[lu.FPA_CRA],
+                                            filter(lambda p: p['CATEGORY_ID'] == PROJECT_CATEGORIES[LU.FPA_CRA],
                                                    PROJECTS))
                                         for link in sublist])),
-                            PROJECTS), lu.FPA_CRA)
+                            PROJECTS), LU.FPA_CRA)
