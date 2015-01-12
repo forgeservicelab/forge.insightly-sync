@@ -102,9 +102,9 @@ class InsightlyUpdater:
             status (str, optional): Modify the project status if present.
                 One of STATUS_RUNNING, STATUS_DEFERRED or STATUS_COMPLETED
         """
-        insightly_project = _getInsightlyProject(project)
+        insightly_project = self._getInsightlyProject(project)
         if updateStage:
-            insightly_project['STAGE_ID'] = _getNextStage(insightly_project)
+            insightly_project['STAGE_ID'] = self._getNextStage(insightly_project)
         if status:
             insightly_project['STATUS'] = status
 

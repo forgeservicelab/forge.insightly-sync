@@ -1,13 +1,13 @@
 """Push updates to LDAP."""
 import ldap as _ldap
 import logging
-from __init__ import sanitize
+from __init__ import sanitize, fileToRedmine
 from unidecode import unidecode
 from canned_mailer import CannedMailer
 from insightly_updater import InsightlyUpdater
 
 
-class ForgeLDAP:
+class ForgeLDAP(object):
 
     """LDAP connection wrapper.
 
@@ -15,9 +15,11 @@ class ForgeLDAP:
     """
 
     _c = None
+    _logger = None
+    _redmine_key = None
     username = None
 
-    def __init__(self, user, pwd, host):
+    def __init__(self, user, pwd, host, redmine_key=None):
         """Initialize the LDAP connection.
 
         Initialize an LDAP object and bind it to the specified host.
@@ -27,6 +29,9 @@ class ForgeLDAP:
             pwd (str): The password for the specified user.
             host (str): The FQDN or IP of the host running the LDAP server. Connection uses ldaps protocol.
         """
+        self._logger = logging.getLogger(self.__class__.__name__)
+        self._redmine_key = redmine_key
+
         dn = 'cn=%s,%s' % (user, LDAPUpdater._LDAP_TREE['accounts'])
         _ldap.set_option(_ldap.OPT_X_TLS_REQUIRE_CERT, _ldap.OPT_X_TLS_ALLOW)
         self._c = _ldap.initialize("ldaps://%s" % host)
@@ -71,10 +76,12 @@ class ForgeLDAP:
         try:
             self._c.add_s(*args)
         except _ldap.ALREADY_EXISTS, err:
-            logging.info('%s; %s' % (err, 'Ignoring.'))
+            self._logger.info('%s; %s' % (err, 'Ignoring.'))
         except _ldap.LDAPError, err:
-            logging.error(type(err))
-            logging.error(err)
+            self._logger.error(type(err))
+            self._logger.error(err)
+            if self._redmine_key:
+                fileToRedmine(key=self._redmine_key, subject=type(err), message=err)
 
     def ldap_update(self, *args):
         """Modify entries on LDAP.
@@ -88,8 +95,10 @@ class ForgeLDAP:
         try:
             self._c.modify_s(*args)
         except _ldap.LDAPError, err:
-            logging.error(err)
-            logging.error(args)
+            self._logger.error(err)
+            self._logger.error(args)
+            if self._redmine_key:
+                fileToRedmine(key=self._redmine_key, subject=type(err), message=err)
 
     def ldap_delete(self, *args):
         """Delete entries from LDAP.
@@ -103,7 +112,9 @@ class ForgeLDAP:
         try:
             self._c.delete_s(*args)
         except _ldap.LDAPError, err:
-            logging.error(err)
+            self._logger.error(err)
+            if self._redmine_key:
+                fileToRedmine(key=self._redmine_key, subject=type(err), message=err)
 
 
 class LDAPUpdater:
@@ -150,6 +161,7 @@ class LDAPUpdater:
     def __init__(self):
         """Initialize instance."""
         self.mailer = CannedMailer()
+        self.updater = InsightlyUpdater()
 
     def _parseName(self, name):
         """Return the first element of a compound name that is not a known particle.
@@ -293,7 +305,7 @@ class LDAPUpdater:
                                                                  self._LDAP_TREE['projects']), c, ldap_conn),
                 map(lambda r: self._createTenantRecord(r, ldap_conn), tenant_list))
         else:
-            insightly_tenant = InsightlyUpdater.createDefaultTenantFor(project)
+            insightly_tenant = self.updater.createDefaultTenantFor(project)
             tenant = self._createTenantRecord(project, ldap_conn)
             tenant[2] = ('o', [str(insightly_tenant['PROJECT_ID'])])
             self._createOrUpdate(project['owner'], ldap_conn)
@@ -313,7 +325,7 @@ class LDAPUpdater:
         if project_type in [self.SDA, self.FPA_CRA]:
             self._createTenants(project['tenants'], project, ldap_conn)
 
-        InsightlyUpdater.updateProject(project, status=InsightlyUpdater.STATUS_RUNNING)
+        self.updater.updateProject(project, status=self.updater.STATUS_RUNNING)
 
         map(lambda a: map(lambda m: self.mailer.sendCannedMail(m, self.mailer.CANNED_MESSAGES['notify_admin_contact'],
                                                                a['displayName']),
@@ -380,7 +392,7 @@ class LDAPUpdater:
 
         ldap_conn.ldap_delete(project['cn'] + self._LDAP_TREE['projects'])
 
-        InsightlyUpdater.updateProject(project, updateStage=False, status=InsightlyUpdater.STATUS_COMPLETED)
+        self.updater.updateProject(project, updateStage=False, status=self.updater.STATUS_COMPLETED)
 
     _actions = {
         ACTION_CREATE: _create,
