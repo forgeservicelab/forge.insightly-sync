@@ -9,7 +9,7 @@ Usage:
 
 Options:
     -h --help                           Show this screen.
-    -i --api-key <insightly_api_key>    Insightly API api-key.
+    -i --api_key <insightly_api_key>    Insightly API key.
     -l --ldap <ldap_host>               LDAP host to connect to [default: localhost].
     -b --bind <ldap_bind_cn>            Username of the LDAP account for binding (needs admin rights).
     -p --password <ldap_bind_pwd>       LDAP binding account password.
@@ -135,23 +135,23 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
 
 if __name__ == '__main__':
     arguments = docopt(__doc__)
+    logging.basicConfig(filename='/var/log/insightly_sync.log',
+                        format='%(asctime)s - [%(name)s] %(levelname)s: %(message)s',
+                        level=arguments['--verbose'].upper())
     try:
-        logging.basicConfig(filename='/var/log/insightly_sync.log',
-                            format='%(asctime)s - [%(name)s] %(levelname)s: %(message)s',
-                            level=arguments['--verbose'].upper())
 
         if arguments['--resources']:
             identity_file = file(arguments['--resources'], 'r')
             map(lambda a: arguments.update([('--' + a.strip()).split('=')]), identity_file.readlines())
             identity_file.close()
 
-        IU = InsightlyUpdater(api_key=arguments['--api-key'],
+        IU = InsightlyUpdater(api_key=arguments['--api_key'],
                               stages=get(InsightlyUpdater.INSIGHTLY_PIPELINE_STAGES_URI, auth=(
-                                  arguments['--api-key'], '')).json(),
+                                  arguments['--api_key'], '')).json(),
                               tenant_category=map(lambda t: t['CATEGORY_ID'],
                                                   filter(lambda c: c['CATEGORY_NAME'] == 'OpenStack Tenant',
                                                          get(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
-                                                             auth=(arguments['--api-key'], '')).json()))[0])
+                                                             auth=(arguments['--api_key'], '')).json()))[0])
         LU = LDAPUpdater()
         QC = QuotaChecker(arguments['--os_user'], arguments['--os_pass'], arguments['--os_tenant'])
 
@@ -252,4 +252,4 @@ if __name__ == '__main__':
 
         if arguments['--redmine_api']:
             fileToRedmine(key=arguments['--redmine_api'], subject=type(err),
-                          message=traceback.print_exc(), priority='critical'):
+                          message=traceback.print_exc(), priority='critical')
