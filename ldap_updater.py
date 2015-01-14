@@ -349,8 +349,8 @@ class LDAPUpdater:
                 map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail']),
                     filter(lambda m: m not in (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
                                                else ldap_record['member']),
-                           dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
-                           else dict_record['member']))[0][0][1]['mail'])
+                           (dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
+                           else dict_record['member'])))[0][0][1]['mail'])
 
     def _updateTenants(self, tenant_list, project, ldap_conn):
         map(lambda t: self._sendNewAccountEmails(self._createOrUpdate(t['members'], ldap_conn),
