@@ -147,7 +147,7 @@ class LDAPUpdater:
                   'projects': "ou=projects,dc=forgeservicelab,dc=fi",
                   'admins': "cn=ldap_admins,ou=roles,dc=forgeservicelab,dc=fi"}
 
-    _PROTECTED_ACCOUNTS = ['binder', 'pwdchanger']
+    _PROTECTED_ACCOUNTS = ['binder', 'pwdchanger', 'syncer']
 
     _ALL_OTHER_GROUPS_FILTER = '(&(|(objectClass=groupOfNames)\
                                     (objectClass=groupOfUniqueNames))\
