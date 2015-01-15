@@ -158,10 +158,10 @@ class LDAPUpdater:
     _PLACEHOLDER_NAME = 'FirstName'
     _PLACEHOLDER_SN = 'LastName'
 
-    def __init__(self):
+    def __init__(self, insightlyUpdater):
         """Initialize instance."""
         self.mailer = CannedMailer()
-        self.updater = InsightlyUpdater()
+        self.updater = insightlyUpdater
 
     def _parseName(self, name):
         """Return the first element of a compound name that is not a known particle.

@@ -152,7 +152,7 @@ if __name__ == '__main__':
                                                   filter(lambda c: c['CATEGORY_NAME'] == 'OpenStack Tenant',
                                                          get(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
                                                              auth=(arguments['--api_key'], '')).json()))[0])
-        LU = LDAPUpdater()
+        LU = LDAPUpdater(IU)
         QC = QuotaChecker(arguments['--os_user'], arguments['--os_pass'], arguments['--os_tenant'])
 
         PIPELINES = filter(lambda p: p['PIPELINE_NAME'] in [LU.PIPELINE_NAME],
