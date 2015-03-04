@@ -82,7 +82,7 @@ class ForgeLDAP(object):
             self._logger.error('Try LDAPadd: %s' % args)
             self._logger.error(err)
             if self._redmine_key:
-                fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\xTry LDAPadd: %s'
+                fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPadd: %s'
                                                                                             % (err, args))
 
     def ldap_update(self, *args):
@@ -100,7 +100,7 @@ class ForgeLDAP(object):
             self._logger.error('Try LDAPmodify: %s' % args)
             self._logger.error(err)
             if self._redmine_key:
-                fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\xTry LDAPmodify: %s'
+                fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPmodify: %s'
                                                                                             % (err, args))
 
     def ldap_delete(self, *args):
