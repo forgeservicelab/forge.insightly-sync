@@ -1,5 +1,6 @@
 """Push updates to LDAP."""
 import ldap as _ldap
+import ldap.modlist as _modlist
 import logging
 from __init__ import sanitize, fileToRedmine
 from unidecode import unidecode
@@ -221,7 +222,7 @@ class LDAPUpdater:
             ('owner', map(lambda o: self._ldapCN(o['uid'], ldap_conn), project['owner'])),
             ('seeAlso', map(lambda a: self._ldapCN(a['uid'], ldap_conn), project['seeAlso'])),
             ('member', map(lambda m: self._ldapCN(m['uid'], ldap_conn), project['members'])),
-            ('description', ['type:%s' % project['description']])
+            ('description', ['type:%s' % item for item in project['description']])
         ])
 
     def _createTenantRecord(self, tenant, ldap_conn):
@@ -266,6 +267,7 @@ class LDAPUpdater:
                                                                   'mobile', 'employeeNumber', 'sn',
                                                                   'mail', 'givenName']))[0][1]),
                    user_records))
+
         return new_records
 
     def _checkAndDelete(self, member_list, project_cn, ldap_conn):
@@ -340,17 +342,17 @@ class LDAPUpdater:
         dict_record = dict(map(lambda r: (r[1], r[2]), record)) if len(record[0]) is 3 else dict(record)
 
         if cmp(dict_record, ldap_record):
-            ldap_conn.ldap_update(dn, record)
-            map(lambda e: self.mailer.sendCannedMail(e,
+            ldap_conn.ldap_update(dn, _modlist.modifyModlist(ldap_record, dict_record))
+            map(lambda email_list: map(lambda e: self.mailer.sendCannedMail(e,
                                                      self.mailer.CANNED_MESSAGES['added_to_tenant'] if any
                                                      (self.OS_TENANT in s for s in dict_record['description']) else
                                                      self.mailer.CANNED_MESSAGES['added_to_project'],
-                                                     dict_record['cn'][0]),
-                map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail']),
+                                                     dict_record['cn'][0]), email_list),
+                map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail'])[0][1]['mail'],
                     filter(lambda m: m not in (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
                                                else ldap_record['member']),
                            (dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
-                           else dict_record['member'])))[0][0][1]['mail'])
+                           else dict_record['member']))))
 
     def _updateTenants(self, tenant_list, project, ldap_conn):
         map(lambda t: self._sendNewAccountEmails(self._createOrUpdate(t['members'], ldap_conn),

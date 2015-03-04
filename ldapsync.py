@@ -90,7 +90,7 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
 
     Args:
         project_list (List): A list of projects as JSON from Insightly to be converted into LDAP-like dictionaries.
-        project_type (str): A description of the type of project, one of 'SDA', 'FPA' or 'FPA (CRA)'.
+        project_type (List): A description of the type of project, one of 'SDA', 'FPA' or 'FPA (CRA)'.
         tenant_list (List, optional): A list of tenants as JSON from Insightly,
             i.e. projects on the 'OpenStack Tenant' category.
 
@@ -130,7 +130,8 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
                                                                   filter(lambda l:
                                                                          l['SECOND_PROJECT_ID'] is not None,
                                                                          p['LINKS'])),
-                                                              tenant_list), LU.OS_TENANT) if tenant_list else [],
+                                                              tenant_list), 
+                                                       project_type + [LU.OS_TENANT]) if tenant_list else [],
                           }, project_list) if project_list else []
 
 if __name__ == '__main__':
@@ -185,39 +186,39 @@ if __name__ == '__main__':
             LU.SDA: mapProjectsToLDAP(filter(lambda p:
                                              p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.SDA],
                                              projects_to_be_created),
-                                      LU.SDA, tenant_list=TENANTS),
+                                      [LU.SDA], tenant_list=TENANTS),
             LU.FPA_CRA: mapProjectsToLDAP(filter(lambda p:
                                                  p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA_CRA],
                                                  projects_to_be_created),
-                                          LU.FPA_CRA, tenant_list=TENANTS),
+                                          [LU.FPA_CRA], tenant_list=TENANTS),
             LU.FPA: mapProjectsToLDAP(filter(lambda p:
                                              p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA],
                                              projects_to_be_created),
-                                      LU.FPA)
+                                      [LU.FPA])
         }
 
         update = {
             LU.SDA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.SDA],
                                              projects_to_be_updated),
-                                      LU.SDA, tenant_list=TENANTS),
+                                      [LU.SDA], tenant_list=TENANTS),
             LU.FPA_CRA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA_CRA],
                                                  projects_to_be_updated),
-                                          LU.FPA_CRA, tenant_list=TENANTS),
+                                          [LU.FPA_CRA], tenant_list=TENANTS),
             LU.FPA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA],
                                              projects_to_be_updated),
-                                      LU.FPA)
+                                      [LU.FPA])
         }
 
         deletion = {
             LU.SDA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.SDA],
                                              projects_to_be_deleted),
-                                      LU.SDA, tenant_list=TENANTS),
+                                      [LU.SDA], tenant_list=TENANTS),
             LU.FPA_CRA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA_CRA],
                                                  projects_to_be_deleted),
-                                          LU.FPA_CRA, tenant_list=TENANTS),
+                                          [LU.FPA_CRA], tenant_list=TENANTS),
             LU.FPA: mapProjectsToLDAP(filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA],
                                              projects_to_be_deleted),
-                                      LU.FPA)
+                                      [LU.FPA])
         }
 
         ldap_connection = ForgeLDAP(arguments['--bind'], arguments['--password'],
