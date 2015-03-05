@@ -152,7 +152,7 @@ class LDAPUpdater:
                   'projects': "ou=projects,dc=forgeservicelab,dc=fi",
                   'admins': "cn=ldap_admins,ou=roles,dc=forgeservicelab,dc=fi"}
 
-    _PROTECTED_ACCOUNTS = ['binder', 'pwdchanger', 'syncer']
+    _PROTECTED_ACCOUNTS = ['admin', 'binder', 'pwdchanger', 'syncer']
 
     _ALL_OTHER_GROUPS_FILTER = '(&(|(objectClass=groupOfNames)\
                                     (objectClass=groupOfUniqueNames))\
@@ -210,7 +210,7 @@ class LDAPUpdater:
         return cn
 
     def _pruneAccounts(self, ldap_conn):
-        map(ldap_conn.ldap_delete,
+        map(lambda entry: ldap_conn.ldap_update(entry, (_ldap.MOD_REPLACE, 'employeeType', 'disabled')),
             map(lambda dn: dn[0],
                 filter(lambda a: 'memberOf' not in a[1].keys() and not any(cn in a[0] for cn in
                                                                            self._PROTECTED_ACCOUNTS),
@@ -271,17 +271,7 @@ class LDAPUpdater:
                                                                   'mobile', 'employeeNumber', 'sn',
                                                                   'mail', 'givenName']))[0][1]),
                    user_records))
-
         return new_records
-
-    def _checkAndDelete(self, member_list, project_cn, ldap_conn):
-        map(lambda d: ldap_conn.ldap_delete(d['cn'] + self._LDAP_TREE['accounts']),
-            filter(lambda m: not ldap_conn.ldap_search(self._LDAP_TREE['projects'],
-                                                       _ldap.SCOPE_SUBTREE,
-                                                       filterstr=self._ALL_OTHER_GROUPS_FILTER.format(
-                user_cn=m['cn'],
-                project_cn=project_cn)),
-            member_list))
 
     def _sendNewAccountEmails(self, new_accounts, project_type, ldap_conn):
         map(lambda d: map(lambda t: self.mailer.sendCannedMail(t,
@@ -362,11 +352,20 @@ class LDAPUpdater:
         map(lambda t: self._sendNewAccountEmails(self._createOrUpdate(t['members'], ldap_conn),
                                                  self.OS_TENANT, ldap_conn), tenant_list)
 
-        new_tenants = filter(lambda t: not ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
-                                                                 (t['cn'], project['cn'], self._LDAP_TREE['projects']),
-                                                                 _ldap.SCOPE_BASE), tenant_list)
+        ldap_tenant_cns = map(lambda cn: cn[1]['cn'][0], ldap_conn.ldap_search('cn=%s,%s' %
+                                                                               (project['cn'],
+                                                                                self._LDAP_TREE['projects']),
+                                                                               _ldap.SCOPE_ONELEVEL, attrlist=['cn']))
+
+        new_tenants = filter(lambda t: t['cn'] not in ldap_tenant_cns, tenant_list)
+        removed_tenant_cns = filter(lambda cn: cn not in map(lambda t: t['cn'], tenant_list), ldap_tenant_cns)
+
         if new_tenants:
             self._createTenants(new_tenants, project, ldap_conn)
+
+        if removed_tenant_cns:
+            map(lambda cn: ldap_conn.ldap_delete('cn=%s,cn=%s,%s' % (cn, project['cn'], self._LDAP_TREE['projects'])),
+                removed_tenant_cns)
 
         map(lambda u: self._updateAndNotify('cn=%s,cn=%s,%s' %
                                             (u[1][2][0], project['cn'], self._LDAP_TREE['projects']), u, ldap_conn),
@@ -390,9 +389,15 @@ class LDAPUpdater:
         if project_type in [self.SDA, self.FPA_CRA]:
             self._updateTenants(project['tenants'], project, ldap_conn)
 
-    def _delete(self, project, project_type, ldap_conn):
-        self._checkAndDelete(project['members'], project['cn'], ldap_conn)
+    def _deleteTenants(self, tenant_list, project, ldap_conn):
+        former_members = []
+        map(lambda tenant: members.extend(ldap_conn.ldap_search(tenant, _ldap.SCOPE_BASE,
+                                                                attrlist=['uniqueMember'])[0][1]['uniqueMember']),
+            tenant_list)
 
+        map(lambda tenant: ldap_conn.ldap_delete(tenant), tenant_list)
+
+    def _delete(self, project, project_type, ldap_conn):
         map(lambda tenant: ldap_conn.ldap_delete(tenant[0]),
             ldap_conn.ldap_search(project['cn'] + self._LDAP_TREE['projects'], _ldap.SCOPE_SUBORDINATE))
 
