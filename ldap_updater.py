@@ -79,7 +79,7 @@ class ForgeLDAP(object):
         except _ldap.ALREADY_EXISTS, err:
             self._logger.info('%s; %s' % (err, 'Ignoring.'))
         except _ldap.LDAPError, err:
-            self._logger.error('Try LDAPadd: %s' % args)
+            self._logger.error('Try LDAPadd: %s' % list(args))
             self._logger.error(err)
             if self._redmine_key:
                 fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPadd: %s'
@@ -97,7 +97,7 @@ class ForgeLDAP(object):
         try:
             self._c.modify_s(*args)
         except _ldap.LDAPError, err:
-            self._logger.error('Try LDAPmodify: %s' % args)
+            self._logger.error('Try LDAPmodify: %s' % list(args))
             self._logger.error(err)
             if self._redmine_key:
                 fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPmodify: %s'
@@ -115,7 +115,7 @@ class ForgeLDAP(object):
         try:
             self._c.delete_s(*args)
         except _ldap.LDAPError, err:
-            self._logger.error('Try LDAPdelete: %s' % args)
+            self._logger.error('Try LDAPdelete: %s' % list(args))
             self._logger.error(err)
             if self._redmine_key:
                 fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPdelete: %s'
