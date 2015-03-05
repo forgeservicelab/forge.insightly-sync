@@ -210,6 +210,7 @@ class LDAPUpdater:
         return cn
 
     def _pruneAccounts(self, ldap_conn):
+        # Disable orphans
         map(lambda entry: ldap_conn.ldap_update(entry, [(_ldap.MOD_REPLACE, 'employeeType', 'disabled')]),
             map(lambda dn: dn[0],
                 filter(lambda a: 'memberOf' not in a[1].keys() and not any(cn in a[0] for cn in
@@ -217,6 +218,14 @@ class LDAPUpdater:
                        ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
                                              _ldap.SCOPE_ONELEVEL,
                                              attrlist=['memberOf']))))
+
+        # Re-enable non orphans
+        map(lambda entry: ldap_conn.ldap_update(entry, [(_ldap.MOD_REPLACE, 'employeeType', None)]),
+            map(lambda dn: dn[0],
+                filter(lambda a: 'memberOf' in a[1].keys(), ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
+                                             _ldap.SCOPE_ONELEVEL,
+                                             attrlist=['memberOf'],
+                                             filterstr='(employeeType=disabled)'))))
 
     def _createRecord(self, project, ldap_conn):
         return filter(lambda r: len(r[1]), [
@@ -399,11 +408,14 @@ class LDAPUpdater:
         map(lambda tenant: ldap_conn.ldap_delete(tenant), tenant_list)
 
     def _delete(self, project, project_type, ldap_conn):
-        map(lambda tenant: ldap_conn.ldap_delete(tenant[0]),
-            ldap_conn.ldap_search(project['cn'] + self._LDAP_TREE['projects'], _ldap.SCOPE_SUBORDINATE))
+        tenant_list = ldap_conn.ldap_search(project['cn'] + self._LDAP_TREE['projects'],
+                                            _ldap.SCOPE_SUBORDINATE, attrlist=['o'])
 
+        map(lambda tenant: ldap_conn.ldap_delete(tenant[0]), tenant_list)
         ldap_conn.ldap_delete(project['cn'] + self._LDAP_TREE['projects'])
 
+        map(lambda tenant: self.updater.updateProject(tenant[1]['o'], updateStage=False,
+                                                      status=self.updater.STATUS_COMPLETED), tenant_list)
         self.updater.updateProject(project, updateStage=False, status=self.updater.STATUS_COMPLETED)
 
     _actions = {
