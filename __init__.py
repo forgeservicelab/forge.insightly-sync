@@ -36,9 +36,9 @@ def fileToRedmine(key=None, subject=None, message=None, priority='normal'):
     }
     issue = {
         'issue': {
-            'project_id': 14,
-            'tracker_id': 12,
-            'assigned_to_id': 31,
+            'project_id': 1,
+            'tracker_id': 1,
+            'assigned_to_id': 266,
             'priority_id': _priority_ids[priority.lower()],
             'subject': subject,
             'description': message
