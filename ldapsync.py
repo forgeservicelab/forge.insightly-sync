@@ -130,7 +130,7 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
                                                                   filter(lambda l:
                                                                          l['SECOND_PROJECT_ID'] is not None,
                                                                          p['LINKS'])),
-                                                              tenant_list), 
+                                                              tenant_list),
                                                        project_type + [LU.OS_TENANT]) if tenant_list else [],
                           }, project_list) if project_list else []
 
@@ -252,5 +252,5 @@ if __name__ == '__main__':
         logger.exception(err)
 
         if arguments['--redmine_api']:
-            fileToRedmine(key=arguments['--redmine_api'], subject=type(err),
+            fileToRedmine(key=arguments['--redmine_api'], subject=err.__class__.__name__,
                           message=traceback.print_exc(), priority='critical')
