@@ -210,7 +210,7 @@ class LDAPUpdater:
         return cn
 
     def _pruneAccounts(self, ldap_conn):
-        map(lambda entry: ldap_conn.ldap_update(entry, (_ldap.MOD_REPLACE, 'employeeType', 'disabled')),
+        map(lambda entry: ldap_conn.ldap_update(entry, [(_ldap.MOD_REPLACE, 'employeeType', 'disabled')]),
             map(lambda dn: dn[0],
                 filter(lambda a: 'memberOf' not in a[1].keys() and not any(cn in a[0] for cn in
                                                                            self._PROTECTED_ACCOUNTS),
