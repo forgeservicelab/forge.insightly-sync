@@ -135,7 +135,10 @@ support@forgeservicelab.fi"""
     _DISABLE_ACCOUNT_DEVELOPER = {
         'subject': 'Your user account in FORGE Service Lab was disabled!',
         'body': """
-Your user account {TOKEN} in FORGE Service Lab was disabled because it no longer belong to any projects.
+Your user account {TOKEN} in FORGE Service Lab was disabled.
+
+A typical reason for disabling the user account is that it no longer belongs to any project. \
+This is because project's Technical Contact has removed it from them.
 
 This notification does not require any actions from you.
 
@@ -151,8 +154,10 @@ support@forgeservicelab.fi"""
         'body': """
 Your user account {TOKEN} in FORGE Service Lab was disabled.
 
-A typical reason for disabling the user account is the contract expiration and this notification does \
-not require any actions from you.
+A typical reason for disabling the user account is that it no longer belongs to any project. \
+This could be because of the contract expiration.
+
+This notification does not require any actions from you.
 
 Should you have any questions then please contact Katariina Kalatie. Email: katariina.kalatie@digile.fi, \
 tel. +358 50 4836372.
