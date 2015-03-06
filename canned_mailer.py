@@ -135,7 +135,7 @@ support@forgeservicelab.fi"""
     _DISABLE_ACCOUNT_DEVELOPER = {
         'subject': 'Your user account in FORGE Service Lab was disabled!',
         'body': """
-Your user account {TOKEN} in FORGE Service Lab was disabled by your project's technical contact person.
+Your user account {TOKEN} in FORGE Service Lab was disabled because it no longer belong to any projects.
 
 This notification does not require any actions from you.
 
