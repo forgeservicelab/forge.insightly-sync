@@ -29,7 +29,6 @@ class QuotaChecker:
 
     _DEFAULT_QUOTA_NAME = 'Default CRA quota'
     _BIGDATA_QUOTA_NAME = 'Bigdata CRA quota'
-    _PUBLIC_NETWORK_ID = '462fafa9-1c4a-41da-b3a2-3a063f4457dc'
 
     DEFAULT_QUOTA = {
         'instances': 16,
@@ -131,7 +130,9 @@ class QuotaChecker:
                                                       'ip_version':'4'}})
 
             router = neutron.create_router({'router':{'tenant_id':tenant, 'name':'default_router'}})['router']
-
+            public_net_id = filter(lambda n: n['router:external'], neutron.list_networks()['networks'])[0]['id']
+            neutron.add_gateway_router(router['id'], {'network_id':public_net_id})
+            neutron.add_interface_router(router['id'],{'subnet_id':subnet['id']})
 
     def _getTenantQuota(self, tenant, tenantType):
         quota = None
