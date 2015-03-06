@@ -14,18 +14,21 @@ class CannedMailer:
         'body': """Welcome to FORGE Service Lab!
 Your username is {TOKEN}
 
-We have created an account for you which you can use to access FORGE Service Lab.
+We have created a user account for you which you can use to access FORGE Service Lab.
 Before accessing the services please set your password at \
 https://support.forgeservicelab.fi/password/?action=sendtoken
 
-In case you have requested computing capacity then please note that it takes about 10 minutes until OpenStack \
-cloud services become accessible.
-All other services are accessible immediately after you have set your password.
+In case you have computing resource allocation then please note that it takes about 10 minutes until \
+cloud services become accessible. \
+All other services are accessible immediately after you have set your desired password.
 
-You can next proceed to https://forgeservicelab.fi and click login. After that you should see black editing bar \
-with the text "Add Content". There you can fill in your organization description and offering descriptions.
-Please email or call Katariina Kalatie if you encounter any problems. Email: katariina.kalatie@digile.fi, \
+You can proceed to https://forgeservicelab.fi and click login after you have set the password. \
+Then you should see black editing bar with the text "Add Content". \
+There you can fill in your organization description and offering descriptions.
+
+Should you have any questions then please contact Katariina Kalatie. Email: katariina.kalatie@digile.fi, \
 tel. +358 50 4836372.
+
 
 Best Regards,
 FORGE Service Lab Support
@@ -37,14 +40,16 @@ support@forgeservicelab.fi"""
         'body': """Welcome to FORGE Service Lab!
 Your username is {TOKEN}
 
-We have created an account for you which you can use to access all FORGE services.
+We have created a user account for you which you can use to access all FORGE Service Lab services.
 Before accessing the services please set your password at \
 https://support.forgeservicelab.fi/password/?action=sendtoken
 
-It takes about 10 minutes until OpenStack cloud service becomes accessible.
+It takes about 10 minutes until the cloud service becomes accessible.
 All other services are accessible immediately after you have set your desired password.
 
-You can now proceed to documents in https://support.forgeservicelab.fi/
+You can proceed to documents in https://support.forgeservicelab.fi/ after you have set the password.\
+If you're project's Technical Contact then you might want to start by adding new members to the project.
+
 
 Best Regards,
 
@@ -53,11 +58,13 @@ support@forgeservicelab.fi"""
     }
 
     _NEW_PROJECT = {
-        'subject': 'You have new access rights',
-        'body': """Welcome to FORGE Service Lab!
-You have been added as a member of the {TOKEN} project.
+        'subject': 'You have new access rights in FORGE Service Lab',
+        'body': """
+You have been added as a member to {TOKEN} project in FORGE Service Lab by your project's Technical Contact.
+You may notice new features when using FORGE Service Lab services.
 
-This notification does not require any actions from you. You may notice new items on your FORGE services.
+This notification does not require any actions from you.
+
 
 Best Regards,
 
@@ -66,11 +73,13 @@ support@forgeservicelab.fi"""
     }
 
     _NEW_TENANT = {
-        'subject': 'You have new access rights',
-        'body': """Welcome to FORGE Service Lab!
-You have been added as a member of the {TOKEN} tenant.
+        'subject': 'You have new access rights in FORGE Service Lab cloud service',
+        'body': """
+You have been added as a member to {TOKEN} project in FORGE Service Lab cloud service.
+You may notice new features when using FORGE Service Lab's cloud service dashboard.
 
-This notification does not require any actions from you. You may notice new projects on your OpenStack dashboard.
+This notification does not require any actions from you.
+
 
 Best Regards,
 
@@ -79,14 +88,15 @@ support@forgeservicelab.fi"""
     }
 
     _ADMIN_NOTIFICATION = {
-        'subject': 'Technical Contact account created',
+        'subject': 'Your project in FORGE Service Lab is ready to start!',
         'body': """Hello {TOKEN},
 
-We just wanted to inform you that we have now completed the FORGE Service Lab account creation for your \
-Technical contact.
-Therefore, your Technical contact is able to proceed utilizing FORGE Service Lab services.
+We just wanted to inform you that we have completed setting up a project and a user account for your \
+Technical Contact in FORGE Service Lab.
+Therefore, your project's Technical Contact is able to proceed utilizing FORGE Service Lab services.
 
 This notification does not require any actions from you.
+
 
 Best Regards,
 
@@ -94,12 +104,81 @@ FORGE Service Lab Support
 support@forgeservicelab.fi"""
     }
 
+    _DEL_FROM_PROJECT = {
+        'subject': 'Your access to FORGE Service Lab was modified!',
+        'body': """
+Your user account was removed from the {TOKEN} project in FORGE Service Lab by the project's Technical Contact.
+
+This notification does not require any actions from you. 
+
+
+Best Regards,
+
+FORGE Service Lab Support
+support@forgeservicelab.fi"""
+    }
+
+    _DEL_FROM_TENANT = {
+        'subject': 'Your access to the FORGE Service Lab cloud service was modified!',
+        'body': """
+Your user account was removed from the OpenStack project {TOKEN} by the project's Technical Contact.
+
+This notification does not require any actions from you.
+
+
+Best Regards,
+
+FORGE Service Lab Support
+support@forgeservicelab.fi"""
+    }
+
+    _DISABLE_ACCOUNT_DEVELOPER = {
+        'subject': 'Your user account in FORGE Service Lab was disabled!',
+        'body': """
+Your user account {TOKEN} in FORGE Service Lab was disabled.
+
+A typical reason for disabling the user account is that it no longer belongs to any project. \
+This is because project's Technical Contact has removed it from them.
+
+This notification does not require any actions from you.
+
+
+Best Regards,
+
+FORGE Service Lab Support
+support@forgeservicelab.fi"""
+    }
+
+    _DISABLE_ACCOUNT_PARTNER = {
+        'subject': 'Your user account in FORGE Service Lab was disabled!',
+        'body': """
+Your user account {TOKEN} in FORGE Service Lab was disabled.
+
+A typical reason for disabling the user account is that it no longer belongs to any project. \
+This could be because of the contract expiration.
+
+This notification does not require any actions from you.
+
+Should you have any questions then please contact Katariina Kalatie. Email: katariina.kalatie@digile.fi, \
+tel. +358 50 4836372.
+
+
+Best Regards,
+
+FORGE Service Lab Support
+support@forgeservicelab.fi"""
+    }
+    
     CANNED_MESSAGES = {
         'new_devel_account': _NEW_ACCOUNT_DEVELOPER,
         'new_partner_account': _NEW_ACCOUNT_PARTNER,
         'notify_admin_contact': _ADMIN_NOTIFICATION,
         'added_to_project': _NEW_PROJECT,
         'added_to_tenant': _NEW_TENANT,
+        'deleted_from_project': _DEL_FROM_PROJECT,
+        'deleted_from_tenant': _DEL_FROM_TENANT,
+        'disabled_devel_account': _DISABLE_ACCOUNT_DEVELOPER,
+        'disabled_partner_account': _DISABLE_ACCOUNT_PARTNER,
     }
 
     def sendCannedMail(self, to, cannedMessage, token):
