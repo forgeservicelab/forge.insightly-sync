@@ -101,28 +101,42 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
     return map(lambda p: {'o': str(p['PROJECT_ID']),
                           'description': project_type,
                           'cn': sanitize(p['PROJECT_NAME']),
-                          'owner': mapContactsToLDAP(map(lambda owner: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI, owner),
-                                                                           auth=(IU.INSIGHTLY_API_KEY, '')).json(),
-                                                         map(lambda c: c['CONTACT_ID'],
+                          'owner': mapContactsToLDAP(filter(lambda owner: owner['CONTACT_ID'] in map(lambda c: c['CONTACT_ID'],
                                                              filter(lambda o:
                                                                     o['CONTACT_ID'] is not None and
                                                                     TECH_ROLE in str(o['ROLE']),
-                                                                    p['LINKS'])))
+                                                                    p['LINKS'])), USERS)
+                                                    #  map(lambda owner: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI, owner),
+                                                    #                        auth=(IU.INSIGHTLY_API_KEY, '')).json(),
+                                                    #      map(lambda c: c['CONTACT_ID'],
+                                                    #          filter(lambda o:
+                                                    #                 o['CONTACT_ID'] is not None and
+                                                    #                 TECH_ROLE in str(o['ROLE']),
+                                                    #                 p['LINKS'])))
                                                      )[:1],
-                          'seeAlso': mapContactsToLDAP(map(lambda admin: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
-                                                                                       admin),
-                                                                             auth=(IU.INSIGHTLY_API_KEY, '')).json(),
-                                                           map(lambda c: c['CONTACT_ID'],
-                                                               filter(lambda a: a['CONTACT_ID'] is not None and
-                                                                      ADMIN_ROLE in str(a['ROLE']),
-                                                                      p['LINKS'])))
+                          'seeAlso': mapContactsToLDAP(filter(lambda admin: admin['CONTACT_ID'] in map(lambda c: c['CONTACT_ID'],
+                                                             filter(lambda a:
+                                                                    a['CONTACT_ID'] is not None and
+                                                                    ADMIN_ROLE in str(a['ROLE']),
+                                                                    p['LINKS'])), USERS)
+                                                    #    map(lambda admin: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
+                                                    #                                    admin),
+                                                    #                          auth=(IU.INSIGHTLY_API_KEY, '')).json(),
+                                                    #        map(lambda c: c['CONTACT_ID'],
+                                                    #            filter(lambda a: a['CONTACT_ID'] is not None and
+                                                    #                   ADMIN_ROLE in str(a['ROLE']),
+                                                    #                   p['LINKS'])))
                                                        ),
-                          'members': mapContactsToLDAP(map(lambda member: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
-                                                                                        member),
-                                                                              auth=(IU.INSIGHTLY_API_KEY, '')).json(),
-                                                           map(lambda c: c['CONTACT_ID'],
-                                                               filter(lambda m: m['CONTACT_ID'] is not None,
-                                                                      p['LINKS'])))
+                          'members': mapContactsToLDAP(filter(lambda member: member['CONTACT_ID'] in map(lambda c: c['CONTACT_ID'],
+                                                             filter(lambda m:
+                                                                    m['CONTACT_ID'] is not None,
+                                                                    p['LINKS'])), USERS)
+                                                    #    map(lambda member: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
+                                                    #                                     member),
+                                                    #                           auth=(IU.INSIGHTLY_API_KEY, '')).json(),
+                                                    #        map(lambda c: c['CONTACT_ID'],
+                                                    #            filter(lambda m: m['CONTACT_ID'] is not None,
+                                                    #                   p['LINKS'])))
                                                        ),
                           'tenants': mapProjectsToLDAP(filter(lambda t:
                                                               t['PROJECT_ID'] in
@@ -168,6 +182,7 @@ if __name__ == '__main__':
                                           get(IU.INSIGHTLY_CATEGORIES_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json())))
 
         PROJECTS = get(IU.INSIGHTLY_PROJECTS_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json()
+        USERS = get(IU.INSIGHTLY_CONTACTS_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json()
 
         TENANTS = filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.OS_TENANT], PROJECTS)
 
