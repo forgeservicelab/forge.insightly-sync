@@ -29,6 +29,8 @@ def fileToRedmine(key=None, subject=None, message=None, priority='normal'):
         message (str): Long description and extra details of the incident.
         priority (str): one of 'low', 'normal', 'high' or 'critical'.
     """
+
+    message = message if message else ''
     _priority_ids = {
         'low': 1,
         'normal': 2,

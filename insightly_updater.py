@@ -93,6 +93,16 @@ class InsightlyUpdater:
 
         return tenant
 
+    def addUserToProject(self, userid, project):
+        insightly_project = self._getInsightlyProject(map(lambda pid: dict(o=pid[1][0]),
+                                                          filter(lambda attr: attr[0] == 'o', project))[0])
+        insightly_project['LINKS'] += [{'CONTACT_ID': userid}]
+
+        put(self.INSIGHTLY_PROJECTS_URI,
+            data=json.dumps(insightly_project),
+            headers={'Content-Type': 'application/json'},
+            auth=(self.INSIGHTLY_API_KEY, ''))
+
     def updateProject(self, project, updateStage=True, status=None):
         """Update a project on Insightly to represent a change on its status or pipeline stage.
 

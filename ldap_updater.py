@@ -295,7 +295,20 @@ class LDAPUpdater:
                  map(lambda r: filter(lambda a: a[0] == 'employeeNumber', r)[0][1][0], new_accounts))
              for record in sublist])
 
+    def _ensureButlerService(self, record):
+        if not any([member.startswith('cn=butler.service') for
+                    member in filter(lambda attribute: attribute[0] == 'uniqueMember', record)[0][1]]):
+            record = map(lambda r: r if r[0] != 'uniqueMember' else ('uniqueMember',
+                                   ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi'] + r[1]), record)
+        return record
+
     def _addAndNotify(self, dn, record, ldap_conn):
+        if 'Digile.Platform' in dn:
+            self.updater.addUserToProject(ldap_conn.ldap_search('cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi',
+                                          _ldap.SCOPE_BASE, attrlist=['employeeNumber'])[0][1]['employeeNumber'][0],
+                                          record)
+            record = self._ensureButlerService(record)
+
         ldap_conn.ldap_add(dn, record)
         map(lambda e: self.mailer.sendCannedMail(e, self.mailer.CANNED_MESSAGES['added_to_tenant'],
                                                  filter(lambda r: r[0] == 'cn', record)[0][1][0]),
