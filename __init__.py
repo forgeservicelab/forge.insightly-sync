@@ -30,7 +30,7 @@ def fileToRedmine(key=None, subject=None, message=None, priority='normal'):
         priority (str): one of 'low', 'normal', 'high' or 'critical'.
     """
 
-    message = message if message else ''
+    message = message or ''
     _priority_ids = {
         'low': 1,
         'normal': 2,
