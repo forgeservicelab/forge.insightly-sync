@@ -2,6 +2,13 @@
 from __init__ import sanitize
 from swiftclient import service as switfService
 from cinderclient.v2 import client as cinderClient
+from keystoneclient.exceptions import NotFound
+from keystoneclient.v3 import client as keystoneClient
+from keystoneclient.v3.roles import RoleManager
+from keystoneclient.v3.groups import GroupManager
+from keystoneclient.v3.domains import DomainManager
+from keystoneclient.v3.projects import ProjectManager
+from keystoneclient.v3.role_assignments import RoleAssignmentManager
 from neutronclient.v2_0 import client as neutronClient
 from novaclient.v1_1 import client as novaClient
 from novaclient.exceptions import Conflict, NotFound
@@ -22,6 +29,7 @@ class QuotaChecker:
 
     _DEFAULT_QUOTA_NAME = 'Default CRA quota'
     _BIGDATA_QUOTA_NAME = 'Bigdata CRA quota'
+    _PUBLIC_NETWORK_ID = '462fafa9-1c4a-41da-b3a2-3a063f4457dc'
 
     DEFAULT_QUOTA = {
         'instances': 16,
@@ -53,17 +61,77 @@ class QuotaChecker:
         'flavors': ['m1.tiny', 'm1.small', 'hadoop.small', 'hadoop.medium', 'hadoop.large']
     }
 
-    def __init__(self, username=None, password=None, tenantid=None):
+    def __init__(self, username=None, password=None, tenantid=None, baseurl=None):
         """Set instance authentication constants.
 
         Args:
             username (str): OpenStack administrator username.
             password (str): OpenStack administrator password.
             tenantid (str): OpenStack tenant for the administrator account.
+            baseurl  (str): OpenStack environment URI.
         """
         self._AUTH_USERNAME = username
         self._AUTH_PASSWORD = password
         self._AUTH_TENANTID = tenantid
+        self._BASE_URL = baseurl
+        keystone = keystoneClient.Client(username=self._AUTH_USERNAME,
+                                         password=self._AUTH_PASSWORD,
+                                         project_name=self._AUTH_TENANTID,
+                                         auth_url='%s:5001/v3' % self._BASE_URL)
+        self._roleManager = RoleManager(keystone)
+        self._groupManager = GroupManager(keystone)
+        self._domainManager = DomainManager(keystone)
+        self._projectManager = ProjectManager(keystone)
+        self._roleAssignmentManager = RoleAssignmentManager(keystone)
+
+    def _getOpenstackGroup(self, group):
+        try:
+            return self._groupManager.find(name=group)
+        except NotFound:
+            return None
+
+    def _getTenantName(self, tenant):
+        projectMap = dict(map(lambda assignment: (assignment.group['id'], assignment.scope['project']['id']),
+                                 filter(lambda a: 'group' in a._info.keys(), self._roleAssignmentManager.list())))
+
+        return projectMap[tenant] if projectMap.has_key(tenant) else None
+
+    def _ensureTenantNetwork(self, tenant):
+        neutron = neutronClient.Client(username=self._AUTH_USERNAME,
+                                       password=self._AUTH_PASSWORD,
+                                       tenant_id=self._AUTH_TENANTID,
+                                       auth_url='%s:5001/v2.0' % self._BASE_URL)
+
+        if not filter(lambda network: network['tenant_id'] == tenant, neutron.list_networks()['networks']):
+            network = neutron.create_network({'network':{'name':'default', 'tenant_id':tenant}})['network']
+
+            allocated_cidrs = map(lambda chunk: (int(chunk[0]), int(chunk[1])),
+                                  map(lambda cidr: cidr['cidr'].split('/')[0].split('.')[-2:],
+                                      filter(lambda subnet: subnet['cidr'].endswith('/27'),
+                                             neutron.list_subnets()['subnets']))).remove((192,0))
+
+            if allocated_cidrs:
+                max_bigchunk = max(map(lambda chunk: chunk[0], cidrs))
+                max_smallchunk = max(map(lambda chunk: chunk[1], filter(lambda c: c[0] == max_bigchunk, cidrs)))
+
+                if max_bigchunk == 191 and max_smallchunk == 224:
+                    max_bigchunk = 192
+                    max_smallchunk = 0
+
+                if max_smallchunk == 224:
+                    cidr = '.'.join([str(chunk) for chunk in [192, 168, max_bigchunk + 1, 0]]) + '/27'
+                else:
+                    cidr = '.'.join([str(chunk) for chunk in [192, 168, max_bigchunk, max_smallchunk + 32]]) + '/27'
+            else:
+                cidr = '192.168.0.0/27'
+            subnet = neutron.create_subnet({'subnet':{'name':'default_subnet',
+                                                      'cidr':cidr,
+                                                      'tenant_id':tenant,
+                                                      'network_id':network['id'],
+                                                      'ip_version':'4'}})
+
+            router = neutron.create_router({'router':{'tenant_id':tenant, 'name':'default_router'}})['router']
+
 
     def _getTenantQuota(self, tenant, tenantType):
         quota = None
@@ -92,48 +160,62 @@ class QuotaChecker:
         except NotFound:
             pass
 
-    def _enforceQuota(self, tenant, quotaDefinition):
-        # TODO: remove return statement.
-        return
-        if quotaDefinition:
-            service_opts = {
-                'meta': ['quota-bytes:%s' % quotaDefinition['swift_bytes']],
-                'os_username': self._AUTH_USERNAME,
-                'os_password': self._AUTH_PASSWORD,
-                'os_auth_url': 'https://cloud.forgeservicelab.fi:5001/v2.0',
-                'os_storage_url': 'https://cloud.forgeservicelab.fi:8081/v1/AUTH_digile',
-                'os_tenant_name': tenant
-            }
+    def _enforceQuota(self, ldap_tenant, quotaDefinition):
+        openstackGroup = self._getOpenstackGroup(ldap_tenant)
+        if openstackGroup:
+            tenant = self._getTenantName(ldap_tenant)
+            if not tenant:
+                # Create tenant in openstack
+                project = self._projectManager.create(ldap_tenant, self._domainManager.find(id='default'))
+                self._roleManager.grant(self._rolemanager.find(name='member').id,
+                                        group=openstackGroup.id,
+                                        project=project.id)
+                tenant = project.name
 
-            swift = switfService.SwiftService(options=service_opts)
-            swift.post()
+            #TODO: verify next line
+            tenant = self._projectManager.find(name=tenant).id
 
-            cinder = cinderClient.Client(username=self._AUTH_USERNAME,
+            self._ensureTenantNetwork(tenant)
+
+            if quotaDefinition:
+                service_opts = {
+                    'meta': ['quota-bytes:%s' % quotaDefinition['swift_bytes']],
+                    'os_username': self._AUTH_USERNAME,
+                    'os_password': self._AUTH_PASSWORD,
+                    'os_auth_url': '%s:5001/v2.0' % self._BASE_URL,
+                    'os_storage_url': '%s:8081/v1/AUTH_digile' % self._BASE_URL,
+                    'os_tenant_name': tenant
+                }
+
+                swift = switfService.SwiftService(options=service_opts)
+                swift.post()
+
+                cinder = cinderClient.Client(username=self._AUTH_USERNAME,
+                                             api_key=self._AUTH_PASSWORD,
+                                             tenant_id=self._AUTH_TENANTID,
+                                             auth_url=service_opts['os_auth_url'])
+                cinder.quotas.update(tenant, gigabytes=quotaDefinition['cinder_GB'])
+
+                nova = novaClient.Client(username=self._AUTH_USERNAME,
                                          api_key=self._AUTH_PASSWORD,
                                          tenant_id=self._AUTH_TENANTID,
                                          auth_url=service_opts['os_auth_url'])
-            cinder.quotas.update(tenant, gigabytes=quotaDefinition['cinder_GB'])
+                nova.quotas.update(tenant,
+                                   instances=quotaDefinition['instances'],
+                                   cores=quotaDefinition['cores'],
+                                   ram=quotaDefinition['ram'],
+                                   floating_ips=quotaDefinition['floating_ips'])
+                allFlavors = nova.flavors.findall()
+                map(lambda f: self._grantAccess(nova, f, tenant),
+                    filter(lambda f: f.name.encode() in quotaDefinition['flavors'], allFlavors))
+                map(lambda f: self._revokeAccess(nova, f, tenant),
+                    filter(lambda f: f.name.encode() not in quotaDefinition['flavors'], allFlavors))
 
-            nova = novaClient.Client(username=self._AUTH_USERNAME,
-                                     api_key=self._AUTH_PASSWORD,
-                                     tenant_id=self._AUTH_TENANTID,
-                                     auth_url=service_opts['os_auth_url'])
-            nova.quotas.update(tenant,
-                               instances=quotaDefinition['instances'],
-                               cores=quotaDefinition['cores'],
-                               ram=quotaDefinition['ram'],
-                               floating_ips=quotaDefinition['floating_ips'])
-            allFlavors = nova.flavors.findall()
-            map(lambda f: self._grantAccess(nova, f, tenant),
-                filter(lambda f: f.name.encode() in quotaDefinition['flavors'], allFlavors))
-            map(lambda f: self._revokeAccess(nova, f, tenant),
-                filter(lambda f: f.name.encode() not in quotaDefinition['flavors'], allFlavors))
-
-            neutron = neutronClient.Client(username=self._AUTH_USERNAME,
-                                           password=self._AUTH_PASSWORD,
-                                           tenant_id=self._AUTH_TENANTID,
-                                           auth_url=service_opts['os_auth_url'])
-            neutron.update_quota(tenant, {'quota': {'floatingip': quotaDefinition['floating_ips']}})
+                neutron = neutronClient.Client(username=self._AUTH_USERNAME,
+                                               password=self._AUTH_PASSWORD,
+                                               tenant_id=self._AUTH_TENANTID,
+                                               auth_url=service_opts['os_auth_url'])
+                neutron.update_quota(tenant, {'quota': {'floatingip': quotaDefinition['floating_ips']}})
 
     def enforceQuotas(self, tenantList, tenantsType):
         """Enforce the quota for each tenant on the list.
@@ -142,5 +224,6 @@ class QuotaChecker:
             tenantList (List): A list of tenants as JSON from Insightly.
             tenantsType (str): A description of the type of tenant, one of 'SDA', 'FPA' or 'FPA (CRA)'.
         """
+        return
         map(lambda t: self._enforceQuota(sanitize(t['PROJECT_NAME']),
                                          self._getTenantQuota(t, tenantsType)), tenantList)

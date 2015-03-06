@@ -3,7 +3,7 @@
 
 Usage:
     ldapsync.py [-l <ldap_host>] -b <ldap_bind_cn> -p <ldap_bind_pwd> -i <insightly_api_key> -U <os_user> -P <os_pass>\
- -T <os_tenant> [-v <log_level>] [-R <redmine_api_key>]
+ -T <os_tenant> [-v <log_level>] [-R <redmine_api_key>] [-O <os_base_url>]
     ldapsync.py -r <identity_file> [-v <log_level>]
     ldapsync.py -h | --help
 
@@ -16,6 +16,7 @@ Options:
     -U --os_user <os_user>              OpenStack administrator username.
     -P --os_pass <os_pass>              OpenStack administrator password.
     -T --os_tenant <os_tenant>          OpenStack tenant for administrator account.
+    -O --os_base_url <os_base_url>      URI of the OpenStack environment. [default: https://cloud.forgeservicelab.fi]
     -R --redmine_api <redmine_api_key>  Redmine REST API key.
     -r --resources <identity_file>      A file with the identity resources in the format [long_option_name]=[value].
     -v --verbose <log_level>            Verbose level, one of DEBUG, INFO, WARNING, ERROR, CRITICAL [default: WARNING]
@@ -154,7 +155,8 @@ if __name__ == '__main__':
                                                          get(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
                                                              auth=(arguments['--api_key'], '')).json()))[0])
         LU = LDAPUpdater(IU)
-        QC = QuotaChecker(arguments['--os_user'], arguments['--os_pass'], arguments['--os_tenant'])
+        QC = QuotaChecker(arguments['--os_user'], arguments['--os_pass'],
+                          arguments['--os_tenant'], arguments['--os_base_url'])
 
         PIPELINES = filter(lambda p: p['PIPELINE_NAME'] in [LU.PIPELINE_NAME],
                            get(IU.INSIGHTLY_PIPELINES_URI,

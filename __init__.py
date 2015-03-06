@@ -2,6 +2,7 @@
 
 This module initializer holds common functions.
 """
+import os
 import json
 from requests import post
 from unidecode import unidecode
@@ -41,7 +42,7 @@ def fileToRedmine(key=None, subject=None, message=None, priority='normal'):
             'assigned_to_id': 266,
             'priority_id': _priority_ids[priority.lower()],
             'subject': subject,
-            'description': message
+            'description': message + '\n\n- %s' % os.environ['HOSTNAME']
         }
     }
 
