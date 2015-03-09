@@ -1,5 +1,6 @@
 """Check OpenStack tenants' quotas."""
 from __init__ import sanitize
+from ldap import SCOPE_SUBORDINATE
 from swiftclient import service as switfService
 from cinderclient.v2 import client as cinderClient
 from keystoneclient.exceptions import NotFound
@@ -180,7 +181,7 @@ class QuotaChecker:
             if ldap_conn and ldap_tenant in map(lambda t: t[0].split(',')[0].split('=')[1],
                                                 ldap_conn.ldap_search('cn=digile.platform,ou=projects,\
                                                                        dc=forgeservicelab,dc=fi',
-                                                                       ldap.SCOPE_SUBORDINATE, attrsonly=1)):
+                                                                       SCOPE_SUBORDINATE, attrsonly=1)):
                 with novaClient.Client(username=self._AUTH_USERNAME,
                                          api_key=self._AUTH_PASSWORD,
                                          tenant_id=tenant,
