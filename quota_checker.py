@@ -244,6 +244,5 @@ class QuotaChecker:
             tenantList (List): A list of tenants as JSON from Insightly.
             tenantsType (str): A description of the type of tenant, one of 'SDA', 'FPA' or 'FPA (CRA)'.
         """
-        return
         map(lambda t: self._enforceQuota(sanitize(t['PROJECT_NAME']),
                                          self._getTenantQuota(t, tenantsType)), tenantList, ldap_conn)
