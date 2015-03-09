@@ -11,7 +11,9 @@ from keystoneclient.v3.projects import ProjectManager
 from keystoneclient.v3.role_assignments import RoleAssignmentManager
 from neutronclient.v2_0 import client as neutronClient
 from novaclient.v1_1 import client as novaClient
-from novaclient.exceptions import Conflict, NotFound
+from novaclient.exceptions import Conflict
+from novaclient.exceptions import NotFound
+from novaclient.exceptions import Unauthorized
 from ldap_updater import LDAPUpdater
 
 
@@ -161,7 +163,7 @@ class QuotaChecker:
         except NotFound:
             pass
 
-    def _enforceQuota(self, ldap_tenant, quotaDefinition):
+    def _enforceQuota(self, ldap_tenant, quotaDefinition, ldap_conn=None):
         openstackGroup = self._getOpenstackGroup(ldap_tenant)
         if openstackGroup:
             tenant = self._getTenantName(ldap_tenant)
@@ -173,8 +175,25 @@ class QuotaChecker:
                                         project=project.id)
                 tenant = project.name
 
-            #TODO: verify next line
             tenant = self._projectManager.find(name=tenant).id
+
+            if ldap_conn and ldap_tenant in map(lambda t: t[0].split(',')[0].split('=')[1],
+                                                ldap_conn.ldap_search('cn=digile.platform,ou=projects,\
+                                                                       dc=forgeservicelab,dc=fi',
+                                                                       ldap.SCOPE_SUBORDINATE, attrsonly=1)):
+                with novaClient.Client(username=self._AUTH_USERNAME,
+                                         api_key=self._AUTH_PASSWORD,
+                                         tenant_id=tenant,
+                                         auth_url='%s:5001/v2.0' % self._BASE_URL) as nova:
+                    try:
+                        nova.security_group_rules.create(nova.security_groups.find(name='default').id,
+                                                         ip_protocol='tcp',
+                                                         from_port=22,
+                                                         to_port=22,
+                                                         cidr='86.50.27.230/32')
+                    except Unauthorized:
+                        # butler.service not yet part of the tenant, wait for next round.
+                        pass
 
             self._ensureTenantNetwork(tenant)
 
@@ -218,7 +237,7 @@ class QuotaChecker:
                                                auth_url=service_opts['os_auth_url'])
                 neutron.update_quota(tenant, {'quota': {'floatingip': quotaDefinition['floating_ips']}})
 
-    def enforceQuotas(self, tenantList, tenantsType):
+    def enforceQuotas(self, tenantList, tenantsType, ldap_conn=None):
         """Enforce the quota for each tenant on the list.
 
         Args:
@@ -227,4 +246,4 @@ class QuotaChecker:
         """
         return
         map(lambda t: self._enforceQuota(sanitize(t['PROJECT_NAME']),
-                                         self._getTenantQuota(t, tenantsType)), tenantList)
+                                         self._getTenantQuota(t, tenantsType)), tenantList, ldap_conn)

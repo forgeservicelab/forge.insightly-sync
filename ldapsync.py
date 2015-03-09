@@ -169,8 +169,8 @@ if __name__ == '__main__':
                                                          get(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
                                                              auth=(arguments['--api_key'], '')).json()))[0])
         LU = LDAPUpdater(IU)
-        QC = QuotaChecker(arguments['--os_user'], arguments['--os_pass'],
-                          arguments['--os_tenant'], arguments['--os_base_url'])
+        QC = QuotaChecker(username=arguments['--os_user'], password=arguments['--os_pass'],
+                          tenantid=arguments['--os_tenant'], baseurl=arguments['--os_base_url'])
 
         PIPELINES = filter(lambda p: p['PIPELINE_NAME'] in [LU.PIPELINE_NAME],
                            get(IU.INSIGHTLY_PIPELINES_URI,
@@ -253,7 +253,7 @@ if __name__ == '__main__':
                                                 filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.SDA],
                                                        PROJECTS))
                                             for link in sublist])),
-                                PROJECTS), LU.SDA)
+                                PROJECTS), LU.SDA, ldap_connection)
 
         QC.enforceQuotas(filter(lambda p: p['PROJECT_ID'] in
                                 filter(lambda tp: tp,
@@ -263,7 +263,7 @@ if __name__ == '__main__':
                                                 filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA_CRA],
                                                        PROJECTS))
                                             for link in sublist])),
-                                PROJECTS), LU.FPA_CRA)
+                                PROJECTS), LU.FPA_CRA, ldap_connection)
     except Exception, err:
         logger = logging.getLogger(__name__)
         logger.exception(err)
