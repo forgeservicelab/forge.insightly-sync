@@ -98,7 +98,7 @@ class QuotaChecker:
         projectMap = dict(map(lambda assignment: (assignment.group['id'], assignment.scope['project']['id']),
                                  filter(lambda a: 'group' in a._info.keys(), self._roleAssignmentManager.list())))
 
-        return projectMap[tenant] if projectMap.has_key(tenant) else None
+        return projectMap[tenant].strip() if projectMap.has_key(tenant) else None
 
     def _ensureTenantNetwork(self, tenant):
         neutron = neutronClient.Client(username=self._AUTH_USERNAME,
