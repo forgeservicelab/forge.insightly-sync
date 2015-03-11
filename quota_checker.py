@@ -153,7 +153,7 @@ class QuotaChecker:
     def _getTenantQuota(self, tenant, tenantType):
         quota = None
         statedQuota = map(lambda q: q['FIELD_VALUE'], filter(lambda f: f['CUSTOM_FIELD_ID'] == 'PROJECT_FIELD_1',
-                                                             tenant['CUSTOMFIELDS']))
+                                                             tenant['CUSTOMFIELDS']))[0]
         if statedQuota == self._BIGDATA_QUOTA_NAME:
             quota = self.BIGDATA_QUOTA
         else:
@@ -182,8 +182,10 @@ class QuotaChecker:
         if openstackGroup:
             tenant = self._getTenantId(ldap_tenant)
             if not tenant:
-                # Create tenant in openstack
-                project = self._projectManager.create(ldap_tenant, self._domainManager.find(id='default'))
+                # Create or map tenant in openstack
+                project = self._projectManager.list(name=ldap_tenant)
+                if not project:
+                    project = self._projectManager.create(ldap_tenant, self._domainManager.find(id='default'))
                 self._roleManager.grant(self._roleManager.find(name='member').id,
                                         group=openstackGroup.id,
                                         project=project.id)
