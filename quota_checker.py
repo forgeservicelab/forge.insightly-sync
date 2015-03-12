@@ -2,7 +2,7 @@
 from __init__ import sanitize
 from time import sleep
 from ldap import SCOPE_SUBORDINATE
-from swiftclient import service as switfService
+from swiftclient import service as swiftService
 from cinderclient.v2 import client as cinderClient
 from keystoneclient.exceptions import NotFound
 from keystoneclient.v3 import client as keystoneClient
@@ -90,9 +90,10 @@ class QuotaChecker:
 
     def _getOpenstackGroup(self, group):
         try:
-            return self._groupManager.find(name=group)
+            os_group = self._groupManager.find(name=group)
         except NotFound:
             return None
+        return os_group
 
     def _getTenantId(self, tenant):
         projectMap = dict(map(lambda assignment: (assignment.group['id'], assignment.scope['project']['id']),
@@ -220,12 +221,13 @@ class QuotaChecker:
                     'os_username': self._AUTH_USERNAME,
                     'os_password': self._AUTH_PASSWORD,
                     'os_auth_url': '%s:5001/v2.0' % self._BASE_URL,
-                    'os_storage_url': '%s:8081/v1/AUTH_digile' % self._BASE_URL,
-                    'os_tenant_name': tenant
+                    'os_storage_url': '%s:8081/v1/AUTH_%s' % (self._BASE_URL, self._projectManager.get(tenant).name),
+                    'os_tenant_name': self._AUTH_TENANTID
                 }
 
-                swift = switfService.SwiftService(options=service_opts)
+                swift = swiftService.SwiftService(options=service_opts)
                 swift.post()
+                del swift
 
                 cinder = cinderClient.Client(username=self._AUTH_USERNAME,
                                              api_key=self._AUTH_PASSWORD,
@@ -259,7 +261,7 @@ class QuotaChecker:
             with novaClient.Client(username=self._AUTH_USERNAME,
                                    api_key=self._AUTH_PASSWORD,
                                    tenant_id=self._AUTH_TENANTID,
-                                   auth_url=service_opts['os_auth_url']) as nova:
+                                   auth_url='%s:5001/v2.0' % self._BASE_URL) as nova:
                 self._grantAccess(nova, nova.flavors.find(name='m1.tiny', is_public=None), tenant)
 
     def enforceQuotas(self, tenantList, tenantsType, ldap_conn=None):
