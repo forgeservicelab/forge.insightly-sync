@@ -68,7 +68,7 @@ class InsightlyUpdater:
         Returns:
             str: a JSON representation of the newly created Insightly project.
         """
-        parent = _getInsightlyProject(project)
+        parent = self._getInsightlyProject(project)
         payload = {
             'PROJECT_NAME': project['cn'],
             'STATUS': self.STATUS_DEFERRED,

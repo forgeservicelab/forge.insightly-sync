@@ -407,11 +407,10 @@ class LDAPUpdater:
             self._updateAndNotify('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']),
                                   map(lambda t: (_ldap.MOD_REPLACE, t[0], t[1]),
                                       self._createRecord(project, ldap_conn)), ldap_conn)
+            if project_type in [self.SDA, self.FPA_CRA]:
+                self._updateTenants(project['tenants'], project, ldap_conn)
         else:
             self._create(project, project_type, ldap_conn)
-
-        if project_type in [self.SDA, self.FPA_CRA]:
-            self._updateTenants(project['tenants'], project, ldap_conn)
 
     def _deleteTenants(self, tenant_list, project, ldap_conn):
         former_members = []
