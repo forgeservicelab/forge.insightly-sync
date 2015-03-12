@@ -393,9 +393,10 @@ class LDAPUpdater:
         map(lambda u: self._updateAndNotify('cn=%s,cn=%s,%s' %
                                             (u[1][2][0], project['cn'], self._LDAP_TREE['projects']), u, ldap_conn),
             map(lambda tr: map(lambda r: (_ldap.MOD_REPLACE, r[0], r[1]), self._createTenantRecord(tr, ldap_conn)),
-                filter(lambda t: ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
-                                                       (t['cn'], project['cn'], self._LDAP_TREE['projects']),
-                                                       _ldap.SCOPE_BASE), tenant_list)))
+                filter(lambda nonews: nonews not in new_tenants,
+                    filter(lambda t: ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
+                                                           (t['cn'], project['cn'], self._LDAP_TREE['projects']),
+                                                           _ldap.SCOPE_BASE), tenant_list))))
 
     def _update(self, project, project_type, ldap_conn):
         ldap_record = ldap_conn.ldap_search('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']),
