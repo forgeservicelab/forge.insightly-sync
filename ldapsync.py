@@ -270,4 +270,4 @@ if __name__ == '__main__':
 
         if arguments['--redmine_api']:
             fileToRedmine(key=arguments['--redmine_api'], subject=err.__class__.__name__,
-                          message=traceback.print_exc(), priority='critical')
+                          message=traceback.format_exc(), priority='critical')

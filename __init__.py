@@ -30,7 +30,7 @@ def fileToRedmine(key=None, subject=None, message=None, priority='normal'):
         priority (str): one of 'low', 'normal', 'high' or 'critical'.
     """
 
-    message = message or ''
+    message = '<pre>%s</pre>' % message if message else ''
     _priority_ids = {
         'low': 1,
         'normal': 2,
@@ -48,5 +48,5 @@ def fileToRedmine(key=None, subject=None, message=None, priority='normal'):
         }
     }
 
-    post('https://support.forgeservicelab.fi/redmine/projects/digile/issues.json', data=json.dumps(issue),
+    post('https://support.forgeservicelab.fi/redmine/issues.json', data=json.dumps(issue),
          headers={'Content-type': 'application/json', 'X-Redmine-API-Key': key})
