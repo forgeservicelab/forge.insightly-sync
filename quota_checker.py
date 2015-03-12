@@ -227,32 +227,38 @@ class QuotaChecker:
                 swift = switfService.SwiftService(options=service_opts)
                 swift.post()
 
-                cinder = cinderClient.Client(username=self._AUTH_USERNAME,
-                                             api_key=self._AUTH_PASSWORD,
-                                             tenant_id=self._AUTH_TENANTID,
-                                             auth_url=service_opts['os_auth_url'])
-                cinder.quotas.update(tenant, gigabytes=quotaDefinition['cinder_GB'])
-
-                nova = novaClient.Client(username=self._AUTH_USERNAME,
+                with cinderClient.Client(username=self._AUTH_USERNAME,
                                          api_key=self._AUTH_PASSWORD,
                                          tenant_id=self._AUTH_TENANTID,
-                                         auth_url=service_opts['os_auth_url'])
-                nova.quotas.update(tenant,
-                                   instances=quotaDefinition['instances'],
-                                   cores=quotaDefinition['cores'],
-                                   ram=quotaDefinition['ram'],
-                                   floating_ips=quotaDefinition['floating_ips'])
-                allFlavors = nova.flavors.findall()
-                map(lambda f: self._grantAccess(nova, f, tenant),
-                    filter(lambda f: f.name.encode() in quotaDefinition['flavors'], allFlavors))
-                map(lambda f: self._revokeAccess(nova, f, tenant),
-                    filter(lambda f: f.name.encode() not in quotaDefinition['flavors'], allFlavors))
+                                         auth_url=service_opts['os_auth_url']) as cinder:
+                    cinder.quotas.update(tenant, gigabytes=quotaDefinition['cinder_GB'])
 
-                neutron = neutronClient.Client(username=self._AUTH_USERNAME,
-                                               password=self._AUTH_PASSWORD,
-                                               tenant_id=self._AUTH_TENANTID,
-                                               auth_url=service_opts['os_auth_url'])
-                neutron.update_quota(tenant, {'quota': {'floatingip': quotaDefinition['floating_ips']}})
+                with novaClient.Client(username=self._AUTH_USERNAME,
+                                       api_key=self._AUTH_PASSWORD,
+                                       tenant_id=self._AUTH_TENANTID,
+                                       auth_url=service_opts['os_auth_url']) as nova:
+                    nova.quotas.update(tenant,
+                                       instances=quotaDefinition['instances'],
+                                       cores=quotaDefinition['cores'],
+                                       ram=quotaDefinition['ram'],
+                                       floating_ips=quotaDefinition['floating_ips'])
+                    allFlavors = nova.flavors.findall()
+                    map(lambda f: self._grantAccess(nova, f, tenant),
+                        filter(lambda f: f.name.encode() in quotaDefinition['flavors'], allFlavors))
+                    map(lambda f: self._revokeAccess(nova, f, tenant),
+                        filter(lambda f: f.name.encode() not in quotaDefinition['flavors'], allFlavors))
+
+                with neutronClient.Client(username=self._AUTH_USERNAME,
+                                          password=self._AUTH_PASSWORD,
+                                          tenant_id=self._AUTH_TENANTID,
+                                          auth_url=service_opts['os_auth_url']) as neutron:
+                    neutron.update_quota(tenant, {'quota': {'floatingip': quotaDefinition['floating_ips']}})
+
+            with novaClient.Client(username=self._AUTH_USERNAME,
+                                   api_key=self._AUTH_PASSWORD,
+                                   tenant_id=self._AUTH_TENANTID,
+                                   auth_url=service_opts['os_auth_url']) as nova:
+                self._grantAccess(nova, 'm1.tiny', tenant)
 
     def enforceQuotas(self, tenantList, tenantsType, ldap_conn=None):
         """Enforce the quota for each tenant on the list.
