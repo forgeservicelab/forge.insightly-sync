@@ -91,7 +91,7 @@ class QuotaChecker:
     def _getOpenstackGroup(self, group):
         try:
             os_group = self._groupManager.find(name=group)
-        except NotFound:
+        except:
             return None
         return os_group
 
