@@ -421,7 +421,7 @@ class LDAPUpdater:
         map(lambda tenant: ldap_conn.ldap_delete(tenant), tenant_list)
 
     def _delete(self, project, project_type, ldap_conn):
-        tenant_list = ldap_conn.ldap_search(project['cn'] + self._LDAP_TREE['projects'],
+        tenant_list = ldap_conn.ldap_search('cn=%s,' % project['cn'] + self._LDAP_TREE['projects'],
                                             _ldap.SCOPE_SUBORDINATE, attrlist=['o'])
 
         map(lambda tenant: ldap_conn.ldap_delete(tenant[0]), tenant_list)
