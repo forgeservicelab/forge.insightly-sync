@@ -44,7 +44,7 @@ class InsightlyUpdater:
         self.TENANT_CATEGORY = tenant_category
 
     def _getInsightlyProject(self, project):
-        return get(self.INSIGHTLY_PROJECTS_URI + str(project['o']), auth=(self.INSIGHTLY_API_KEY, '')).json()
+        return get(self.INSIGHTLY_PROJECTS_URI + str(project['o'][0]), auth=(self.INSIGHTLY_API_KEY, '')).json()
 
     def _getNextStage(self, insightly_project):
         return filter(lambda s:

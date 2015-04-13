@@ -83,7 +83,7 @@ class ForgeLDAP(object):
             self._logger.error(err)
             if self._redmine_key:
                 fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPadd: %s'
-                                                                                            % (err, args))
+                              % (err, args))
 
     def ldap_update(self, *args):
         """Modify entries on LDAP.
@@ -101,7 +101,7 @@ class ForgeLDAP(object):
             self._logger.error(err)
             if self._redmine_key:
                 fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPmodify: %s'
-                                                                                            % (err, args))
+                              % (err, args))
 
     def ldap_delete(self, *args):
         """Delete entries from LDAP.
@@ -119,7 +119,7 @@ class ForgeLDAP(object):
             self._logger.error(err)
             if self._redmine_key:
                 fileToRedmine(key=self._redmine_key, subject=err.__class__.__name__, message='%s\nTry LDAPdelete: %s'
-                                                                                            % (err, args))
+                              % (err, args))
 
 
 class LDAPUpdater:
@@ -222,7 +222,8 @@ class LDAPUpdater:
         # Re-enable non orphans
         map(lambda entry: ldap_conn.ldap_update(entry, [(_ldap.MOD_REPLACE, 'employeeType', None)]),
             map(lambda dn: dn[0],
-                filter(lambda a: 'memberOf' in a[1].keys(), ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
+                filter(lambda a: 'memberOf' in a[1].keys(),
+                       ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
                                              _ldap.SCOPE_ONELEVEL,
                                              attrlist=['memberOf'],
                                              filterstr='(employeeType=disabled)'))))
@@ -231,7 +232,7 @@ class LDAPUpdater:
         return filter(lambda r: len(r[1]), [
             ('objectClass', ['groupOfNames']),
             ('cn', [project['cn']]),
-            ('o', [project['o']]),
+            ('o', project['o']),
             ('owner', map(lambda o: self._ldapCN(o['uid'], ldap_conn), project['owner'])),
             ('seeAlso', map(lambda a: self._ldapCN(a['uid'], ldap_conn), project['seeAlso'])),
             ('member', map(lambda m: self._ldapCN(m['uid'], ldap_conn), project['members'])),
@@ -298,15 +299,18 @@ class LDAPUpdater:
     def _ensureButlerService(self, record):
         if not any([member.startswith('cn=butler.service') for
                     member in filter(lambda attribute: attribute[0] == 'uniqueMember', record)[0][1]]):
-            record = map(lambda r: r if r[0] != 'uniqueMember' else ('uniqueMember',
-                                   ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi'] + r[1]), record)
+            record = map(lambda r: r if r[0] != 'uniqueMember'
+                         else ('uniqueMember',
+                               ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi'] + r[1]), record)
         return record
 
     def _addAndNotify(self, dn, record, ldap_conn):
         if 'Digile.Platform' in dn:
-            self.updater.addUserToProject(ldap_conn.ldap_search('cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi',
-                                          _ldap.SCOPE_BASE, attrlist=['employeeNumber'])[0][1]['employeeNumber'][0],
-                                          record)
+            self.updater\
+                .addUserToProject(ldap_conn.ldap_search('cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi',
+                                                        _ldap.SCOPE_BASE,
+                                                        attrlist=['employeeNumber'])[0][1]['employeeNumber'][0],
+                                  record)
             record = self._ensureButlerService(record)
 
         ldap_conn.ldap_add(dn, record)
@@ -360,16 +364,19 @@ class LDAPUpdater:
         if cmp(dict_record, ldap_record):
             ldap_conn.ldap_update(dn, _modlist.modifyModlist(ldap_record, dict_record))
             if any(member_attribute in dict_record.keys() for member_attribute in ['member', 'uniqueMember']):
-                map(lambda email_list: map(lambda e: self.mailer.sendCannedMail(e,
-                                                         self.mailer.CANNED_MESSAGES['added_to_tenant'] if any
-                                                         (self.OS_TENANT in s for s in dict_record['description']) else
-                                                         self.mailer.CANNED_MESSAGES['added_to_project'],
-                                                         dict_record['cn'][0]), email_list),
+                map(lambda email_list: map(lambda e: self.mailer
+                                                         .sendCannedMail(e,
+                                                                         self.mailer.CANNED_MESSAGES['added_to_tenant']
+                                                                         if any(self.OS_TENANT in s for s in
+                                                                                dict_record['description']) else
+                                                                         self.mailer.CANNED_MESSAGES[
+                                                                             'added_to_project'],
+                                                                         dict_record['cn'][0]), email_list),
                     map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail'])[0][1]['mail'],
                         filter(lambda m: m not in (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
                                                    else ldap_record['member']),
                                (dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
-                               else dict_record['member']))))
+                                else dict_record['member']))))
 
     def _updateTenants(self, tenant_list, project, ldap_conn):
         map(lambda t: self._sendNewAccountEmails(self._createOrUpdate(t['members'], ldap_conn),
@@ -394,9 +401,9 @@ class LDAPUpdater:
                                             (u[1][2][0], project['cn'], self._LDAP_TREE['projects']), u, ldap_conn),
             map(lambda tr: map(lambda r: (_ldap.MOD_REPLACE, r[0], r[1]), self._createTenantRecord(tr, ldap_conn)),
                 filter(lambda nonews: nonews not in new_tenants,
-                    filter(lambda t: ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
-                                                           (t['cn'], project['cn'], self._LDAP_TREE['projects']),
-                                                           _ldap.SCOPE_BASE), tenant_list))))
+                       filter(lambda t: ldap_conn.ldap_search('cn=%s,cn=%s,%s' %
+                                                              (t['cn'], project['cn'], self._LDAP_TREE['projects']),
+                                                              _ldap.SCOPE_BASE), tenant_list))))
 
     def _update(self, project, project_type, ldap_conn):
         ldap_record = ldap_conn.ldap_search('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']),
@@ -425,9 +432,9 @@ class LDAPUpdater:
                                             _ldap.SCOPE_SUBORDINATE, attrlist=['o'])
 
         map(lambda tenant: ldap_conn.ldap_delete(tenant[0]), tenant_list)
-        ldap_conn.ldap_delete(project['cn'] + self._LDAP_TREE['projects'])
+        ldap_conn.ldap_delete('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']))
 
-        map(lambda tenant: self.updater.updateProject(tenant[1]['o'], updateStage=False,
+        map(lambda tenant: self.updater.updateProject(tenant[1], updateStage=False,
                                                       status=self.updater.STATUS_COMPLETED), tenant_list)
         self.updater.updateProject(project, updateStage=False, status=self.updater.STATUS_COMPLETED)
 

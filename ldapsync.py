@@ -24,14 +24,16 @@ Options:
 import logging
 import traceback
 from __init__ import sanitize, fileToRedmine
+from fuzzywuzzy import process
 from insightly_updater import InsightlyUpdater
 from ldap_updater import LDAPUpdater, ForgeLDAP
 from quota_checker import QuotaChecker
 from requests import get
 from docopt import docopt
+from time import sleep
 
-TECH_ROLE = 'Technical Contact'
-ADMIN_ROLE = 'Admin Contact'
+TECH_ROLE = 'tech'
+ADMIN_ROLE = 'admin'
 
 
 def filterStagesByOrder(stage_order_list, stage_list, pipeline_list):
@@ -98,56 +100,56 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
     Returns:
         List: The project list converted into dictionaries with the relevant LDAP attributes, including nested tenants.
     """
-    return map(lambda p: {'o': str(p['PROJECT_ID']),
+    return map(lambda p: {'o': [str(p['PROJECT_ID'])],
                           'description': project_type,
                           'cn': sanitize(p['PROJECT_NAME']),
-                          'owner': mapContactsToLDAP(filter(lambda owner: owner['CONTACT_ID'] in map(lambda c: c['CONTACT_ID'],
-                                                             filter(lambda o:
-                                                                    o['CONTACT_ID'] is not None and
-                                                                    TECH_ROLE in str(o['ROLE']),
-                                                                    p['LINKS'])), USERS)
-                                                    #  map(lambda owner: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI, owner),
-                                                    #                        auth=(IU.INSIGHTLY_API_KEY, '')).json(),
-                                                    #      map(lambda c: c['CONTACT_ID'],
-                                                    #          filter(lambda o:
-                                                    #                 o['CONTACT_ID'] is not None and
-                                                    #                 TECH_ROLE in str(o['ROLE']),
-                                                    #                 p['LINKS'])))
+                          'owner': mapContactsToLDAP(filter(lambda owner: owner['CONTACT_ID'] in
+                                                            map(lambda c: c['CONTACT_ID'],
+                                                                filter(lambda o:
+                                                                       o['CONTACT_ID'] is not None and
+                                                                       process.extractOne(
+                                                                           TECH_ROLE,
+                                                                           [str(o['ROLE'])],
+                                                                           score_cutoff=80),
+                                                                       p['LINKS'])), USERS)
                                                      )[:1],
-                          'seeAlso': mapContactsToLDAP(filter(lambda admin: admin['CONTACT_ID'] in map(lambda c: c['CONTACT_ID'],
-                                                             filter(lambda a:
-                                                                    a['CONTACT_ID'] is not None and
-                                                                    ADMIN_ROLE in str(a['ROLE']),
-                                                                    p['LINKS'])), USERS)
-                                                    #    map(lambda admin: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
-                                                    #                                    admin),
-                                                    #                          auth=(IU.INSIGHTLY_API_KEY, '')).json(),
-                                                    #        map(lambda c: c['CONTACT_ID'],
-                                                    #            filter(lambda a: a['CONTACT_ID'] is not None and
-                                                    #                   ADMIN_ROLE in str(a['ROLE']),
-                                                    #                   p['LINKS'])))
+                          'seeAlso': mapContactsToLDAP(filter(lambda admin: admin['CONTACT_ID'] in
+                                                              map(lambda c: c['CONTACT_ID'],
+                                                                  filter(lambda a:
+                                                                         a['CONTACT_ID'] is not None and
+                                                                         process.extractOne(
+                                                                             ADMIN_ROLE,
+                                                                             [str(a['ROLE'])],
+                                                                             score_cutoff=80),
+                                                                         p['LINKS'])), USERS)
                                                        ),
-                          'members': mapContactsToLDAP(filter(lambda member: member['CONTACT_ID'] in map(lambda c: c['CONTACT_ID'],
-                                                             filter(lambda m:
-                                                                    m['CONTACT_ID'] is not None,
-                                                                    p['LINKS'])), USERS)
-                                                    #    map(lambda member: get('%s%s' % (IU.INSIGHTLY_CONTACTS_URI,
-                                                    #                                     member),
-                                                    #                           auth=(IU.INSIGHTLY_API_KEY, '')).json(),
-                                                    #        map(lambda c: c['CONTACT_ID'],
-                                                    #            filter(lambda m: m['CONTACT_ID'] is not None,
-                                                    #                   p['LINKS'])))
+                          'members': mapContactsToLDAP(filter(lambda member: member['CONTACT_ID'] in
+                                                              map(lambda c: c['CONTACT_ID'],
+                                                                  filter(lambda m:
+                                                                         m[
+                                                                             'CONTACT_ID'] is not None,
+                                                                         p['LINKS'])), USERS)
                                                        ),
                           'tenants': mapProjectsToLDAP(filter(lambda t:
                                                               t['PROJECT_ID'] in
                                                               map(lambda sp:
                                                                   sp['SECOND_PROJECT_ID'],
                                                                   filter(lambda l:
-                                                                         l['SECOND_PROJECT_ID'] is not None,
+                                                                         l[
+                                                                             'SECOND_PROJECT_ID'] is not None,
                                                                          p['LINKS'])),
                                                               tenant_list),
                                                        project_type + [LU.OS_TENANT]) if tenant_list else [],
                           }, project_list) if project_list else []
+
+
+def _retry_get_request(uri, **kwargs):
+    response = get(uri, **kwargs)
+    while response.status_code is not 200:
+        sleep(0.1)
+        response = get(uri, **kwargs)
+    return response
+
 
 if __name__ == '__main__':
     arguments = docopt(__doc__)
@@ -155,34 +157,36 @@ if __name__ == '__main__':
                         format='%(asctime)s - [%(name)s] %(levelname)s: %(message)s',
                         level=arguments['--verbose'].upper())
     try:
-
         if arguments['--resources']:
             identity_file = file(arguments['--resources'], 'r')
-            map(lambda a: arguments.update([('--' + a.strip()).split('=')]), identity_file.readlines())
+            map(lambda a: arguments.update(
+                [('--' + a.strip()).split('=')]), identity_file.readlines())
             identity_file.close()
 
         IU = InsightlyUpdater(api_key=arguments['--api_key'],
-                              stages=get(InsightlyUpdater.INSIGHTLY_PIPELINE_STAGES_URI, auth=(
-                                  arguments['--api_key'], '')).json(),
+                              stages=_retry_get_request(InsightlyUpdater.INSIGHTLY_PIPELINE_STAGES_URI,
+                                                        auth=(arguments['--api_key'], '')).json(),
                               tenant_category=map(lambda t: t['CATEGORY_ID'],
                                                   filter(lambda c: c['CATEGORY_NAME'] == 'OpenStack Tenant',
-                                                         get(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
-                                                             auth=(arguments['--api_key'], '')).json()))[0])
+                                                         _retry_get_request(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
+                                                                            auth=(arguments['--api_key'],
+                                                                                  '')).json()))[0])
         LU = LDAPUpdater(IU)
         QC = QuotaChecker(username=arguments['--os_user'], password=arguments['--os_pass'],
                           tenantid=arguments['--os_tenant'], baseurl=arguments['--os_base_url'])
 
         PIPELINES = filter(lambda p: p['PIPELINE_NAME'] in [LU.PIPELINE_NAME],
-                           get(IU.INSIGHTLY_PIPELINES_URI,
-                               auth=(IU.INSIGHTLY_API_KEY, '')).json()
+                           _retry_get_request(IU.INSIGHTLY_PIPELINES_URI,
+                                              auth=(IU.INSIGHTLY_API_KEY, '')).json()
                            )
 
         PROJ_CATEGORIES = dict(map(lambda pc: (pc['CATEGORY_NAME'], pc['CATEGORY_ID']),
                                    filter(lambda c: c['CATEGORY_NAME'] in [LU.SDA, LU.FPA, LU.FPA_CRA, LU.OS_TENANT],
-                                          get(IU.INSIGHTLY_CATEGORIES_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json())))
+                                          _retry_get_request(IU.INSIGHTLY_CATEGORIES_URI,
+                                                             auth=(IU.INSIGHTLY_API_KEY, '')).json())))
 
-        PROJECTS = get(IU.INSIGHTLY_PROJECTS_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json()
-        USERS = get(IU.INSIGHTLY_CONTACTS_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json()
+        PROJECTS = _retry_get_request(IU.INSIGHTLY_PROJECTS_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json()
+        USERS = _retry_get_request(IU.INSIGHTLY_CONTACTS_URI, auth=(IU.INSIGHTLY_API_KEY, '')).json()
 
         TENANTS = filter(lambda p: p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.OS_TENANT], PROJECTS)
 
@@ -196,20 +200,24 @@ if __name__ == '__main__':
         projects_to_be_updated = filter(lambda p: p['CATEGORY_ID'] in PROJ_CATEGORIES.values() and
                                         p['STAGE_ID'] in update_stages, PROJECTS)
         projects_to_be_deleted = filter(lambda p: p['CATEGORY_ID'] in PROJ_CATEGORIES.values() and
-                                        p['STAGE_ID'] in deletion_stages and p['STATUS'] is not IU.STATUS_COMPLETED,
+                                        p['STAGE_ID'] in deletion_stages and p[
+                                            'STATUS'] is not IU.STATUS_COMPLETED,
                                         PROJECTS)
 
         creation = {
             LU.SDA: mapProjectsToLDAP(filter(lambda p:
-                                             p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.SDA],
+                                             p['CATEGORY_ID'] == PROJ_CATEGORIES[
+                                                 LU.SDA],
                                              projects_to_be_created),
                                       [LU.SDA], tenant_list=TENANTS),
             LU.FPA_CRA: mapProjectsToLDAP(filter(lambda p:
-                                                 p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA_CRA],
+                                                 p['CATEGORY_ID'] == PROJ_CATEGORIES[
+                                                     LU.FPA_CRA],
                                                  projects_to_be_created),
                                           [LU.FPA_CRA], tenant_list=TENANTS),
             LU.FPA: mapProjectsToLDAP(filter(lambda p:
-                                             p['CATEGORY_ID'] == PROJ_CATEGORIES[LU.FPA],
+                                             p['CATEGORY_ID'] == PROJ_CATEGORIES[
+                                                 LU.FPA],
                                              projects_to_be_created),
                                       [LU.FPA])
         }
