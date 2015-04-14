@@ -242,7 +242,6 @@ class LDAPUpdater:
 
     def _getLDAPCompatibleAccount(self, account, ldap_conn):
         account = account.copy()
-        account['cn'] = self._createCN(account, ldap_conn)
         account['objectClass'] = 'inetOrgPerson'
         account['employeeType'] = 'hidden' if 'True' in account.pop('isHidden') else ''
 
@@ -280,7 +279,8 @@ class LDAPUpdater:
                              member_list)
 
         map(lambda c: ldap_conn.ldap_add('cn=%s,%s' % (self._createCN(c, ldap_conn), self._LDAP_TREE['accounts']), c),
-            [_modlist.addModlist(self._getLDAPCompatibleAccount(user, ldap_conn)) for user in new_records])
+            [_modlist.addModlist(self._getLDAPCompatibleAccount(user, ldap_conn),
+                                 ignore_attr_types=['cn']) for user in new_records])
 
         map(lambda u: ldap_conn.ldap_update('%s' % self._ldapCN(u['employeeNumber'], ldap_conn),
                                             _modlist.modifyModlist(ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
@@ -288,7 +288,7 @@ class LDAPUpdater:
                                                                                          filterstr='employeeNumber=%s'
                                                                                          % u['employeeNumber'])[0][1],
                                                                    self._getLDAPCompatibleAccount(u, ldap_conn),
-                                                                   ignore_attr_types=['userPassword'])),
+                                                                   ignore_attr_types=['userPassword', 'cn'])),
             filter(lambda m: cmp(dict(self._getLDAPCompatibleAccount(m, ldap_conn)),
                                  ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
                                                        _ldap.SCOPE_ONELEVEL,
