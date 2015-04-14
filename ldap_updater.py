@@ -287,7 +287,8 @@ class LDAPUpdater:
                                                                                          _ldap.SCOPE_ONELEVEL,
                                                                                          filterstr='employeeNumber=%s'
                                                                                          % u['employeeNumber'])[0][1],
-                                                                   self._getLDAPCompatibleAccount(u, ldap_conn))),
+                                                                   self._getLDAPCompatibleAccount(u, ldap_conn),
+                                                                   ignore_attr_types=['userPassword'])),
             filter(lambda m: cmp(dict(self._getLDAPCompatibleAccount(m, ldap_conn)),
                                  ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
                                                        _ldap.SCOPE_ONELEVEL,
