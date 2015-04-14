@@ -425,7 +425,8 @@ class LDAPUpdater:
 
         map(lambda u: self._updateAndNotify('cn=%s,cn=%s,%s' % (u['cn'], project['cn'], self._LDAP_TREE['projects']),
                                             u, ldap_conn),
-            [_modlist.modifyModlist(ldap_conn.ldap_search('cn=%s,cn=%s,%s' % (tenant['cn'], project['cn']),
+            [_modlist.modifyModlist(ldap_conn.ldap_search('cn=%s,cn=%s,%s' % (tenant['cn'], project['cn'],
+                                                                              self._LDAP_TREE['projects']),
                                                           _ldap.SCOPE_BASE)[0][1],
                                     self._getLDAPCompatibleProject(tenant, 'groupOfUniqueNames', ldap_conn))
              for tenant in filter(lambda nonews: nonews not in new_tenants,
