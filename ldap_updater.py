@@ -197,8 +197,8 @@ class LDAPUpdater:
                                      attrsonly=1)[0][0]
 
     def _createCN(self, user, ldap_conn):
-        firstName = None if user[2][1][0] is self._PLACEHOLDER_NAME else self._parseName(user[2][1][0])
-        lastName = None if user[1][1][0] is self._PLACEHOLDER_SN else self._parseName(user[1][1][0])
+        firstName = None if user['givenName'] is self._PLACEHOLDER_NAME else self._parseName(user['givenName'])
+        lastName = None if user['sn'] is self._PLACEHOLDER_SN else self._parseName(user['sn'])
 
         cn = '.'.join(filter(lambda n: n, [firstName, lastName]))
 
@@ -240,14 +240,15 @@ class LDAPUpdater:
 
         return project
 
-    def _getLDAPCompatibleAccount(self, account):
+    def _getLDAPCompatibleAccount(self, account, ldap_conn):
         account = account.copy()
+        account['cn'] = self._createCN(account, ldap_conn)
         account['objectClass'] = 'inetOrgPerson'
         account['employeeType'] = 'hidden' if 'True' in account.pop('isHidden') else ''
 
         return account
 
-    @deprecated
+    # deprecated
     def _createRecord(self, project, ldap_conn):
         return filter(lambda r: len(r[1]), [
             ('objectClass', ['groupOfNames']),
@@ -259,7 +260,7 @@ class LDAPUpdater:
             ('description', ['type:%s' % item for item in project['description']])
         ])
 
-    @deprecated
+    # deprecated
     def _createTenantRecord(self, tenant, ldap_conn):
         record = self._createRecord(tenant, ldap_conn)
         record = map(lambda r: r if r[0] != 'objectClass' else (r[0], ['groupOfUniqueNames']), record)
@@ -279,18 +280,18 @@ class LDAPUpdater:
                              member_list)
 
         map(lambda c: ldap_conn.ldap_add('cn=%s,%s' % (self._createCN(c, ldap_conn), self._LDAP_TREE['accounts']), c),
-            [_modlist.addModlist(self._getLDAPCompatibleAccount(user)) for user in new_records])
+            [_modlist.addModlist(self._getLDAPCompatibleAccount(user, ldap_conn)) for user in new_records])
 
         map(lambda u: ldap_conn.ldap_update('%s' % self._ldapCN(u['employeeNumber'], ldap_conn),
                                             _modlist.modifyModlist(ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
                                                                                          _ldap.SCOPE_ONELEVEL,
                                                                                          filterstr='employeeNumber=%s'
                                                                                          % u['employeeNumber'])[0][1],
-                                                                   self._getLDAPCompatibleAccount(u))),
-            filter(lambda m: cmp(dict(self._getLDAPCompatibleAccount(m)),
+                                                                   self._getLDAPCompatibleAccount(u, ldap_conn))),
+            filter(lambda m: cmp(dict(self._getLDAPCompatibleAccount(m, ldap_conn)),
                                  ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
                                                        _ldap.SCOPE_ONELEVEL,
-                                                       filterstr='employeeNumber=%s' % m[-1][1][0],
+                                                       filterstr='employeeNumber=%s' % m['employeeNumber'],
                                                        attrlist=['displayName', 'objectClass', 'employeeType',
                                                                  'mobile', 'employeeNumber', 'sn',
                                                                  'mail', 'givenName'])[0][1]),
@@ -311,7 +312,7 @@ class LDAPUpdater:
                                      attrlist=['cn', 'mail'])[0][1],
                 new_accounts))
 
-    @deprecated
+    # deprecated
     def _ensureButlerService(self, record):
         if not any([member.startswith('cn=butler.service') for
                     member in filter(lambda attribute: attribute[0] == 'uniqueMember', record)[0][1]]):
