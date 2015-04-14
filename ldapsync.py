@@ -72,7 +72,7 @@ def mapContactsToLDAP(contact_list):
     Returns:
         List: The contact list converted into dictionaries with the relevant LDAP attributes.
     """
-    return map(lambda c: {'uid': str(c['CONTACT_ID']),
+    return map(lambda c: {'employeeNumber': str(c['CONTACT_ID']),
                           'givenName': c['FIRST_NAME'].encode('utf-8') if c['FIRST_NAME'] else '',
                           'sn': c['LAST_NAME'].encode('utf-8') if c['LAST_NAME'] else '',
                           'displayName': ('%s %s' % (c['FIRST_NAME'], c['LAST_NAME'])).strip().encode('utf-8'),
@@ -100,7 +100,7 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
     Returns:
         List: The project list converted into dictionaries with the relevant LDAP attributes, including nested tenants.
     """
-    return map(lambda p: {'o': [str(p['PROJECT_ID'])],
+    return map(lambda p: {'o': str(p['PROJECT_ID']),
                           'description': project_type,
                           'cn': sanitize(p['PROJECT_NAME']),
                           'owner': mapContactsToLDAP(filter(lambda owner: owner['CONTACT_ID'] in
@@ -123,13 +123,13 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
                                                                              score_cutoff=80),
                                                                          p['LINKS'])), USERS)
                                                        ),
-                          'members': mapContactsToLDAP(filter(lambda member: member['CONTACT_ID'] in
-                                                              map(lambda c: c['CONTACT_ID'],
-                                                                  filter(lambda m:
-                                                                         m[
-                                                                             'CONTACT_ID'] is not None,
-                                                                         p['LINKS'])), USERS)
-                                                       ),
+                          'member': mapContactsToLDAP(filter(lambda member: member['CONTACT_ID'] in
+                                                             map(lambda c: c['CONTACT_ID'],
+                                                                 filter(lambda m:
+                                                                        m[
+                                                                            'CONTACT_ID'] is not None,
+                                                                        p['LINKS'])), USERS)
+                                                      ),
                           'tenants': mapProjectsToLDAP(filter(lambda t:
                                                               t['PROJECT_ID'] in
                                                               map(lambda sp:
