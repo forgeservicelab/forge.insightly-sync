@@ -200,8 +200,8 @@ if __name__ == '__main__':
         projects_to_be_updated = filter(lambda p: p['CATEGORY_ID'] in PROJ_CATEGORIES.values() and
                                         p['STAGE_ID'] in update_stages, PROJECTS)
         projects_to_be_deleted = filter(lambda p: p['CATEGORY_ID'] in PROJ_CATEGORIES.values() and
-                                        p['STAGE_ID'] in deletion_stages and p[
-                                            'STATUS'] is not IU.STATUS_COMPLETED,
+                                        p['STAGE_ID'] in deletion_stages and
+                                        p['STATUS'] is not IU.STATUS_COMPLETED,
                                         PROJECTS)
 
         creation = {

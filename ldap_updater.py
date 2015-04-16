@@ -461,7 +461,7 @@ class LDAPUpdater:
         ldap_conn.ldap_delete('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']))
 
         map(lambda tenant: self.updater.updateProject(tenant[1], updateStage=False,
-                                                      status=self.updater.STATUS_COMPLETED), tenant_list)
+                                                      status=self.updater.STATUS_COMPLETED), tenant_list or [])
         self.updater.updateProject(project, updateStage=False, status=self.updater.STATUS_COMPLETED)
 
     _actions = {
