@@ -44,7 +44,7 @@ class InsightlyUpdater:
         self.TENANT_CATEGORY = tenant_category
 
     def _getInsightlyProject(self, project):
-        return get(self.INSIGHTLY_PROJECTS_URI + str(project['o'][0]), auth=(self.INSIGHTLY_API_KEY, '')).json()
+        return get(self.INSIGHTLY_PROJECTS_URI + str(project['o']), auth=(self.INSIGHTLY_API_KEY, '')).json()
 
     def _getNextStage(self, insightly_project):
         return filter(lambda s:
@@ -75,7 +75,7 @@ class InsightlyUpdater:
             'CATEGORY_ID': self.TENANT_CATEGORY,
             'CUSTOMFIELDS': parent['CUSTOMFIELDS'],
             'LINKS': [{
-                'CONTACT_ID': project['owner'][0]['uid']
+                'CONTACT_ID': project['owner'][0]['employeeNumber']
             }]
         }
 
@@ -94,8 +94,7 @@ class InsightlyUpdater:
         return tenant
 
     def addUserToProject(self, userid, project):
-        insightly_project = self._getInsightlyProject(map(lambda pid: dict(o=pid[1][0]),
-                                                          filter(lambda attr: attr[0] == 'o', project))[0])
+        insightly_project = self._getInsightlyProject(project)
         insightly_project['LINKS'] += [{'CONTACT_ID': userid}]
 
         put(self.INSIGHTLY_PROJECTS_URI,

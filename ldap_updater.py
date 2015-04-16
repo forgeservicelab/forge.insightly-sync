@@ -354,19 +354,17 @@ class LDAPUpdater:
             tenant['uniqueMember'] = tenant['owner']
             tenant.pop('owner')
             tenant.pop('seeAlso')
-            self._createOrUpdate(project['owner'], ldap_conn)
-            ldap_conn.ldap_add('cn=%(cn)s,cn=%(cn)s,%(sf)s' % {'cn': project['cn'], 'sf': self._LDAP_TREE['projects']},
-                               _modlist.addModlist(tenant))
-            map(lambda a: map(lambda m: self.mailer.sendCannedMail(m, self.mailer.CANNED_MESSAGES['added_to_tenant'],
-                                                                   tenant['cn']),
-                              a['mail']),
-                tenant['uniqueMember'])
+            self._sendNewAccountEmails(self._createOrUpdate(tenant['uniqueMember'], ldap_conn),
+                                       self.OS_TENANT, ldap_conn)
+            self._addAndNotify('cn=%(cn)s,cn=%(cn)s,%(sf)s' %
+                               {'cn': project['cn'], 'sf': self._LDAP_TREE['projects']}, tenant, ldap_conn)
 
     def _create(self, project, project_type, ldap_conn):
         self._sendNewAccountEmails(self._createOrUpdate(project['members'], ldap_conn), project_type, ldap_conn)
 
         ldap_conn.ldap_add(
-            'cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']), self._createRecord(project, ldap_conn))
+            'cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']),
+            _modlist.addModlist(self._getLDAPCompatibleProject(project)))
 
         if project_type in [self.SDA, self.FPA_CRA]:
             self._createTenants(project['tenants'], project, ldap_conn)
@@ -463,7 +461,7 @@ class LDAPUpdater:
         tenant_list = ldap_conn.ldap_search('cn=%s,' % project['cn'] + self._LDAP_TREE['projects'],
                                             _ldap.SCOPE_SUBORDINATE, attrlist=['o'])
 
-        map(lambda tenant: ldap_conn.ldap_delete(tenant[0]), tenant_list)
+        map(lambda tenant: ldap_conn.ldap_delete(tenant[0]), tenant_list or [])
         ldap_conn.ldap_delete('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']))
 
         map(lambda tenant: self.updater.updateProject(tenant[1], updateStage=False,
