@@ -332,13 +332,15 @@ class LDAPUpdater:
             if not any([member.startswith('cn=butler.service') for member in tenant['uniqueMember']]):
                 tenant['uniqueMember'] += ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi']
 
-        ldap_conn.ldap_add(dn, _modlist.addModlist(self._getLDAPCompatibleProject(tenant)))
+        ldap_tenant = self._getLDAPCompatibleProject(tenant, 'groupOfUniqueNames', ldap_conn)
+        ldap_conn.ldap_add(dn, _modlist.addModlist(ldap_tenant))
+
         map(lambda ml: map(lambda e: self.mailer.sendCannedMail(e,
                                                                 self.mailer.CANNED_MESSAGES['added_to_tenant'],
-                                                                tenant['cn']),
+                                                                ldap_tenant['cn']),
                            ml),
             [ldap_conn.ldap_search(s, _ldap.SCOPE_BASE,
-                                   attrlist=['mail'])[0][1]['mail'] for s in tenant['uniqueMember']])
+                                   attrlist=['mail'])[0][1]['mail'] for s in ldap_tenant['uniqueMember']])
 
     def _createTenants(self, tenant_list, project, ldap_conn):
         if tenant_list:
@@ -360,11 +362,11 @@ class LDAPUpdater:
                                {'cn': project['cn'], 'sf': self._LDAP_TREE['projects']}, tenant, ldap_conn)
 
     def _create(self, project, project_type, ldap_conn):
-        self._sendNewAccountEmails(self._createOrUpdate(project['members'], ldap_conn), project_type, ldap_conn)
+        self._sendNewAccountEmails(self._createOrUpdate(project['member'], ldap_conn), project_type, ldap_conn)
 
         ldap_conn.ldap_add(
             'cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']),
-            _modlist.addModlist(self._getLDAPCompatibleProject(project)))
+            _modlist.addModlist(self._getLDAPCompatibleProject(project, 'groupOfNames', ldap_conn)))
 
         if project_type in [self.SDA, self.FPA_CRA]:
             self._createTenants(project['tenants'], project, ldap_conn)
@@ -377,7 +379,7 @@ class LDAPUpdater:
             project['seeAlso'])
 
         map(lambda a: map(lambda m: self.mailer.sendCannedMail(m, self.mailer.CANNED_MESSAGES['added_to_project'],
-                                                               project['cn']), a['mail']), project['members'])
+                                                               project['cn']), a['mail']), project['member'])
 
     def _updateAndNotify(self, dn, record, ldap_conn, is_tenant=False):
         ldap_record = ldap_conn.ldap_search(dn, _ldap.SCOPE_BASE)[0][1]
@@ -456,6 +458,8 @@ class LDAPUpdater:
     def _delete(self, project, project_type, ldap_conn):
         tenant_list = ldap_conn.ldap_search('cn=%s,' % project['cn'] + self._LDAP_TREE['projects'],
                                             _ldap.SCOPE_SUBORDINATE, attrlist=['o'])
+        for tenant in tenant_list:
+            tenant[1]['o'] = tenant[1]['o'][0]
 
         map(lambda tenant: ldap_conn.ldap_delete(tenant[0]), tenant_list or [])
         ldap_conn.ldap_delete('cn=%s,%s' % (project['cn'], self._LDAP_TREE['projects']))
