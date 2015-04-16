@@ -109,7 +109,7 @@ support@forgeservicelab.fi"""
         'body': """
 Your user account was removed from the {TOKEN} project in FORGE Service Lab by the project's Technical Contact.
 
-This notification does not require any actions from you. 
+This notification does not require any actions from you.
 
 
 Best Regards,
@@ -132,13 +132,10 @@ FORGE Service Lab Support
 support@forgeservicelab.fi"""
     }
 
-    _DISABLE_ACCOUNT_DEVELOPER = {
+    _ACCOUNT_DISABLED = {
         'subject': 'Your user account in FORGE Service Lab was disabled!',
         'body': """
-Your user account {TOKEN} in FORGE Service Lab was disabled.
-
-A typical reason for disabling the user account is that it no longer belongs to any project. \
-This is because project's Technical Contact has removed it from them.
+Your user account {TOKEN} in FORGE Service Lab was disabled because it no longer belongs to any active FORGE projects.
 
 This notification does not require any actions from you.
 
@@ -149,26 +146,6 @@ FORGE Service Lab Support
 support@forgeservicelab.fi"""
     }
 
-    _DISABLE_ACCOUNT_PARTNER = {
-        'subject': 'Your user account in FORGE Service Lab was disabled!',
-        'body': """
-Your user account {TOKEN} in FORGE Service Lab was disabled.
-
-A typical reason for disabling the user account is that it no longer belongs to any project. \
-This could be because of the contract expiration.
-
-This notification does not require any actions from you.
-
-Should you have any questions then please contact Katariina Kalatie. Email: katariina.kalatie@digile.fi, \
-tel. +358 50 4836372.
-
-
-Best Regards,
-
-FORGE Service Lab Support
-support@forgeservicelab.fi"""
-    }
-    
     CANNED_MESSAGES = {
         'new_devel_account': _NEW_ACCOUNT_DEVELOPER,
         'new_partner_account': _NEW_ACCOUNT_PARTNER,
@@ -177,8 +154,7 @@ support@forgeservicelab.fi"""
         'added_to_tenant': _NEW_TENANT,
         'deleted_from_project': _DEL_FROM_PROJECT,
         'deleted_from_tenant': _DEL_FROM_TENANT,
-        'disabled_devel_account': _DISABLE_ACCOUNT_DEVELOPER,
-        'disabled_partner_account': _DISABLE_ACCOUNT_PARTNER,
+        'disabled_account': _ACCOUNT_DISABLED,
     }
 
     def sendCannedMail(self, to, cannedMessage, token):
