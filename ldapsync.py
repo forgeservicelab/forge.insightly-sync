@@ -24,7 +24,7 @@ Options:
 import logging
 import traceback
 from __init__ import sanitize, fileToRedmine
-from fuzzywuzzy import process
+from fuzzywuzzy.process import extractOne
 from insightly_updater import InsightlyUpdater
 from ldap_updater import LDAPUpdater, ForgeLDAP
 from quota_checker import QuotaChecker
@@ -107,20 +107,18 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
                                                             map(lambda c: c['CONTACT_ID'],
                                                                 filter(lambda o:
                                                                        o['CONTACT_ID'] is not None and
-                                                                       process.extractOne(
-                                                                           TECH_ROLE,
-                                                                           [str(o['ROLE'])],
-                                                                           score_cutoff=80),
+                                                                       extractOne(TECH_ROLE,
+                                                                                  [str(o['ROLE'])],
+                                                                                  score_cutoff=80),
                                                                        p['LINKS'])), USERS)
                                                      )[:1],
                           'seeAlso': mapContactsToLDAP(filter(lambda admin: admin['CONTACT_ID'] in
                                                               map(lambda c: c['CONTACT_ID'],
                                                                   filter(lambda a:
                                                                          a['CONTACT_ID'] is not None and
-                                                                         process.extractOne(
-                                                                             ADMIN_ROLE,
-                                                                             [str(a['ROLE'])],
-                                                                             score_cutoff=80),
+                                                                         extractOne(ADMIN_ROLE,
+                                                                                    [str(a['ROLE'])],
+                                                                                    score_cutoff=80),
                                                                          p['LINKS'])), USERS)
                                                        ),
                           'member': mapContactsToLDAP(filter(lambda member: member['CONTACT_ID'] in
@@ -201,7 +199,7 @@ if __name__ == '__main__':
                                         p['STAGE_ID'] in update_stages, PROJECTS)
         projects_to_be_deleted = filter(lambda p: p['CATEGORY_ID'] in PROJ_CATEGORIES.values() and
                                         p['STAGE_ID'] in deletion_stages and
-                                        p['STATUS'] is not IU.STATUS_COMPLETED,
+                                        not extractOne(p['STATUS'], [IU.STATUS_COMPLETED], score_cutoff=80),
                                         PROJECTS)
 
         creation = {
