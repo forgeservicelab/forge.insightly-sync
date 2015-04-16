@@ -6,6 +6,7 @@ from __init__ import sanitize, fileToRedmine
 from unidecode import unidecode
 from canned_mailer import CannedMailer
 from insightly_updater import InsightlyUpdater
+from fuzzywuzzy.process import extractOne
 
 
 class ForgeLDAP(object):
@@ -209,9 +210,13 @@ class LDAPUpdater:
 
         return cn
 
-    def _disableAndNotify(self, entry, ldap_conn):
-        ldap_conn.ldap_update(entry, [(_ldap.MOD_REPLACE, 'employeeType', 'disabled')])
-        # TODO: Disabled account mail entrypoint.
+    def _disableAndNotify(self, dn, ldap_conn):
+        account = ldap_conn.ldap_search(dn, _ldap.SCOPE_BASE, attrlist=['employeeType', 'cn', 'mail'])[0][1]
+        if account and ('employeeType' not in account or not extractOne(account['employeeType'][0],
+                                                                        ['disabled'], score_cutoff=80)):
+            ldap_conn.ldap_update(dn, [(_ldap.MOD_REPLACE, 'employeeType', 'disabled')])
+            map(lambda e: self.mailer.sendCannedMail(e, self.mailer.CANNED_MESSAGES['disabled_account'],
+                                                     account['cn'][0]), account['mail'])
 
     def _pruneAccounts(self, ldap_conn):
         # Disable orphans
@@ -393,6 +398,15 @@ class LDAPUpdater:
 
         if cmp(dict_record, ldap_record):
             ldap_conn.ldap_update(dn, _modlist.modifyModlist(ldap_record, dict_record))
+            new_users = filter(lambda m: m not in (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
+                                                   else ldap_record['member']),
+                               (dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
+                                   else dict_record['member']))
+            gone_users = filter(lambda m: m not in (dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
+                                                    else dict_record['member']),
+                                (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
+                                 else ldap_record['member']))
+
             if any(member_attribute in dict_record.keys() for member_attribute in ['member', 'uniqueMember']):
                 map(lambda email_list: map(lambda e: self.mailer
                                                          .sendCannedMail(e,
@@ -403,10 +417,18 @@ class LDAPUpdater:
                                                                              'added_to_project'],
                                                                          dict_record['cn'][0]), email_list),
                     map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail'])[0][1]['mail'],
-                        filter(lambda m: m not in (ldap_record['uniqueMember'] if 'uniqueMember' in ldap_record.keys()
-                                                   else ldap_record['member']),
-                               (dict_record['uniqueMember'] if 'uniqueMember' in dict_record.keys()
-                                else dict_record['member']))))
+                        new_users))
+                map(lambda email_list: map(lambda e: self.mailer
+                                           .sendCannedMail(e,
+                                                           self.mailer.CANNED_MESSAGES[
+                                                               'deleted_from_tenant']
+                                                           if any(self.OS_TENANT in s for s in
+                                                                  dict_record['description']) else
+                                                           self.mailer.CANNED_MESSAGES[
+                                                               'deleted_from_project'],
+                                                           dict_record['cn'][0]), email_list),
+                    map(lambda s: ldap_conn.ldap_search(s, _ldap.SCOPE_BASE, attrlist=['mail'])[0][1]['mail'],
+                        gone_users))
 
     def _updateTenants(self, tenant_list, project, ldap_conn):
         map(lambda t: self._sendNewAccountEmails(self._createOrUpdate(t['member'], ldap_conn),
@@ -462,7 +484,7 @@ class LDAPUpdater:
     def _delete(self, project, project_type, ldap_conn):
         tenant_list = ldap_conn.ldap_search('cn=%s,' % project['cn'] + self._LDAP_TREE['projects'],
                                             _ldap.SCOPE_SUBORDINATE, attrlist=['o'])
-        for tenant in tenant_list:
+        for tenant in tenant_list or []:
             tenant[1]['o'] = tenant[1]['o'][0]
 
         map(lambda tenant: ldap_conn.ldap_delete(tenant[0]), tenant_list or [])
