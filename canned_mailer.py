@@ -42,7 +42,7 @@ Your username is {TOKEN}
 
 We have created a user account for you which you can use to access all FORGE Service Lab services.
 Before accessing the services please set your password at \
-https://support.forgeservicelab.fi/password/?action=sendtoken
+https://auth.forgeservicelab.fi/password/?action=sendtoken
 
 It takes about 10 minutes until the cloud service becomes accessible.
 All other services are accessible immediately after you have set your desired password.
