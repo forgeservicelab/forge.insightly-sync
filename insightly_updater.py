@@ -68,28 +68,32 @@ class InsightlyUpdater:
         Returns:
             str: a JSON representation of the newly created Insightly project.
         """
-        parent = self._getInsightlyProject(project)
-        payload = {
-            'PROJECT_NAME': project['cn'],
-            'STATUS': self.STATUS_DEFERRED,
-            'CATEGORY_ID': self.TENANT_CATEGORY,
-            'CUSTOMFIELDS': parent['CUSTOMFIELDS'],
-            'LINKS': [{
-                'CONTACT_ID': project['owner'][0]['employeeNumber']
-            }]
-        }
+        if not project['owner']:
+            # Can't create default tenant without a technical contact
+            tenant = None
+        else:
+            parent = self._getInsightlyProject(project)
+            payload = {
+                'PROJECT_NAME': project['cn'],
+                'STATUS': self.STATUS_DEFERRED,
+                'CATEGORY_ID': self.TENANT_CATEGORY,
+                'CUSTOMFIELDS': parent['CUSTOMFIELDS'],
+                'LINKS': [{
+                    'CONTACT_ID': project['owner'][0]['employeeNumber']
+                }]
+            }
 
-        tenant = post(self.INSIGHTLY_PROJECTS_URI,
-                      data=json.dumps(payload),
-                      headers={'Content-Type': 'application/json'},
-                      auth=(self.INSIGHTLY_API_KEY, '')).json()
+            tenant = post(self.INSIGHTLY_PROJECTS_URI,
+                          data=json.dumps(payload),
+                          headers={'Content-Type': 'application/json'},
+                          auth=(self.INSIGHTLY_API_KEY, '')).json()
 
-        parent['LINKS'] = parent['LINKS'] + [{'SECOND_PROJECT_ID': tenant['PROJECT_ID']}]
+            parent['LINKS'] = parent['LINKS'] + [{'SECOND_PROJECT_ID': tenant['PROJECT_ID']}]
 
-        put(self.INSIGHTLY_PROJECTS_URI,
-            data=json.dumps(parent),
-            headers={'Content-Type': 'application/json'},
-            auth=(self.INSIGHTLY_API_KEY, ''))
+            put(self.INSIGHTLY_PROJECTS_URI,
+                data=json.dumps(parent),
+                headers={'Content-Type': 'application/json'},
+                auth=(self.INSIGHTLY_API_KEY, ''))
 
         return tenant
 
