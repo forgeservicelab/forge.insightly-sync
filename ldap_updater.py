@@ -240,9 +240,10 @@ class LDAPUpdater:
     def _getLDAPCompatibleProject(self, project, objectClass, ldap_conn):
         project = project.copy()
         project['objectClass'] = objectClass
-        project['owner'] = [self._ldapCN(owner['employeeNumber'], ldap_conn) for owner in project.pop('owner')]
-        project['member'] = [self._ldapCN(member['employeeNumber'], ldap_conn) for member in project.pop('member')]
-        project['seeAlso'] = [self._ldapCN(seeAlso['employeeNumber'], ldap_conn) for seeAlso in project.pop('seeAlso')]
+        project['owner'] = [self._ldapCN(owner['employeeNumber'], ldap_conn) for owner in project.pop('owner', [])]
+        project['member'] = [self._ldapCN(member['employeeNumber'], ldap_conn) for member in project.pop('member', [])]
+        project['seeAlso'] = [self._ldapCN(seeAlso['employeeNumber'],
+                                           ldap_conn) for seeAlso in project.pop('seeAlso', [])]
         project['uniqueMember'] = project['member']
         project.pop('tenants')
         project.pop('member' if objectClass is 'groupOfUniqueNames' else 'uniqueMember')
@@ -287,9 +288,10 @@ class LDAPUpdater:
                                                                  attrsonly=1),
                              member_list)
 
-        map(lambda c: ldap_conn.ldap_add('cn=%s,%s' % (self._createCN(c, ldap_conn), self._LDAP_TREE['accounts']), c),
-            [_modlist.addModlist(self._getLDAPCompatibleAccount(user),
-                                 ignore_attr_types=['cn']) for user in new_records])
+        map(lambda c: ldap_conn.ldap_add('cn=%s,%s' % (self._createCN(c, ldap_conn), self._LDAP_TREE['accounts']),
+                                         _modlist.addModlist(self._getLDAPCompatibleAccount(c),
+                                                             ignore_attr_types=['cn'])),
+            new_records)
 
         map(lambda u: ldap_conn.ldap_update('%s' % self._ldapCN(u['employeeNumber'], ldap_conn),
                                             _modlist.modifyModlist(ldap_conn.ldap_search(self._LDAP_TREE['accounts'],
@@ -316,10 +318,10 @@ class LDAPUpdater:
                                                                self.mailer.CANNED_MESSAGES['new_partner_account'],
                                                                d['cn'][0]),
                           d['mail']),
-            map(lambda a: c.search_s('ou=accounts,dc=forgeservicelab,dc=fi',
-                                     ldap.SCOPE_ONELEVEL,
-                                     filterstr='employeeNumber=%s' % a['employeeNumber'],
-                                     attrlist=['cn', 'mail'])[0][1],
+            map(lambda a: ldap_conn.ldap_search('ou=accounts,dc=forgeservicelab,dc=fi',
+                                                _ldap.SCOPE_ONELEVEL,
+                                                filterstr='employeeNumber=%s' % a['employeeNumber'],
+                                                attrlist=['cn', 'mail'])[0][1],
                 new_accounts))
 
     # deprecated
@@ -360,10 +362,9 @@ class LDAPUpdater:
                 tenant_list)
         else:
             insightly_tenant = self.updater.createDefaultTenantFor(project)
-            tenant = self._getLDAPCompatibleProject(project, 'groupOfUniqueNames', ldap_conn)
+            tenant = project.copy()
             tenant['o'] = str(insightly_tenant['PROJECT_ID'])
-            tenant['uniqueMember'] = tenant['owner']
-            tenant.pop('owner')
+            tenant['uniqueMember'] = tenant.pop('owner', [])
             tenant.pop('seeAlso')
             self._sendNewAccountEmails(self._createOrUpdate(tenant['uniqueMember'], ldap_conn),
                                        self.OS_TENANT, ldap_conn)
