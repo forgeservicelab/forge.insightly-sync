@@ -443,7 +443,7 @@ class LDAPUpdater:
         new_tenants = filter(lambda t: t['cn'] not in ldap_tenant_cns, tenant_list)
         removed_tenant_cns = filter(lambda cn: cn not in [tenant['cn'] for tenant in tenant_list], ldap_tenant_cns)
 
-        if new_tenants:
+        if new_tenants or not tenant_list:
             self._createTenants(new_tenants, project, ldap_conn)
 
         if removed_tenant_cns:
