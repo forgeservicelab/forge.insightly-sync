@@ -32,8 +32,8 @@ from requests import get
 from docopt import docopt
 from time import sleep
 
-TECH_ROLE = 'tech'
-ADMIN_ROLE = 'admin'
+TECH_ROLE = ['tech', 'tek']
+ADMIN_ROLE = ['admin', 'admin contact']
 
 
 def filterStagesByOrder(stage_order_list, stage_list, pipeline_list):
@@ -107,8 +107,8 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
                                                             map(lambda c: c['CONTACT_ID'],
                                                                 filter(lambda o:
                                                                        o['CONTACT_ID'] is not None and
-                                                                       extractOne(TECH_ROLE,
-                                                                                  [str(o['ROLE'])],
+                                                                       extractOne(str(o['ROLE']),
+                                                                                  TECH_ROLE,
                                                                                   score_cutoff=80),
                                                                        p['LINKS'])), USERS)
                                                      )[:1],
@@ -116,8 +116,8 @@ def mapProjectsToLDAP(project_list, project_type, tenant_list=False):
                                                               map(lambda c: c['CONTACT_ID'],
                                                                   filter(lambda a:
                                                                          a['CONTACT_ID'] is not None and
-                                                                         extractOne(ADMIN_ROLE,
-                                                                                    [str(a['ROLE'])],
+                                                                         extractOne(str(a['ROLE']),
+                                                                                    ADMIN_ROLE,
                                                                                     score_cutoff=80),
                                                                          p['LINKS'])), USERS)
                                                        ),
