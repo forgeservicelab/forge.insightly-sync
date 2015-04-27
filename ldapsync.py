@@ -32,7 +32,7 @@ from requests import get
 from docopt import docopt
 from time import sleep
 
-TECH_ROLE = ['tech', 'tek']
+TECH_ROLE = ['tech', 'tek', 'technical']
 ADMIN_ROLE = ['admin', 'admin contact']
 
 
