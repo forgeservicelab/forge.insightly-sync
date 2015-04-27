@@ -97,9 +97,9 @@ class QuotaChecker:
 
     def _getTenantId(self, tenant):
         projectMap = dict(map(lambda assignment: (assignment.group['id'], assignment.scope['project']['id']),
-                                 filter(lambda a: 'group' in a._info.keys(), self._roleAssignmentManager.list())))
+                              filter(lambda a: 'group' in a._info.keys(), self._roleAssignmentManager.list())))
 
-        return projectMap[tenant].strip() if projectMap.has_key(tenant) else None
+        return projectMap[tenant].strip() if tenant in projectMap.keys() else None
 
     def _ensureTenantNetwork(self, tenant):
         neutron = neutronClient.Client(username=self._AUTH_USERNAME,
@@ -108,7 +108,7 @@ class QuotaChecker:
                                        auth_url='%s:5001/v2.0' % self._BASE_URL)
 
         if not filter(lambda network: network['tenant_id'] == tenant, neutron.list_networks()['networks']):
-            network = neutron.create_network({'network':{'name':'default', 'tenant_id':tenant}})['network']
+            network = neutron.create_network({'network': {'name': 'default', 'tenant_id': tenant}})['network']
             while not neutron.list_networks(id=network['id'])['networks']:
                 sleep(1)
 
@@ -117,8 +117,8 @@ class QuotaChecker:
                                       filter(lambda subnet: subnet['cidr'].endswith('/27'),
                                              neutron.list_subnets()['subnets'])))
 
-            if (192,0) in allocated_cidrs:
-                allocated_cidrs.remove((192,0))
+            if (192, 0) in allocated_cidrs:
+                allocated_cidrs.remove((192, 0))
 
             if allocated_cidrs:
                 max_bigchunk = max(map(lambda chunk: chunk[0], allocated_cidrs))
@@ -134,22 +134,23 @@ class QuotaChecker:
                     cidr = '.'.join([str(chunk) for chunk in [192, 168, max_bigchunk, max_smlchunk + 32]]) + '/27'
             else:
                 cidr = '192.168.0.0/27'
-            subnet = neutron.create_subnet({'subnet':{'name':'default-subnet',
-                                                      'cidr':cidr,
-                                                      'tenant_id':tenant,
-                                                      'network_id':network['id'],
-                                                      'ip_version':'4'}})['subnet']
+            subnet = neutron.create_subnet({'subnet': {'name': 'default-subnet',
+                                                       'cidr': cidr,
+                                                       'dns_nameservers': ['193.166.4.24', '193.166.4.25'],
+                                                       'tenant_id': tenant,
+                                                       'network_id': network['id'],
+                                                       'ip_version': '4'}})['subnet']
             while not neutron.list_subnets(id=subnet['id'])['subnets']:
                 sleep(1)
 
-            router = neutron.create_router({'router':{'tenant_id':tenant,
-                                                      'name':'default-router'}})['router']
+            router = neutron.create_router({'router': {'tenant_id': tenant,
+                                                       'name': 'default-router'}})['router']
             while not neutron.list_routers(id=router['id'])['routers']:
                 sleep(1)
             public_net_id = filter(lambda n: n['router:external'],
                                    neutron.list_networks(name='public')['networks'])[0]['id']
-            neutron.add_gateway_router(router['id'], {'network_id':public_net_id})
-            neutron.add_interface_router(router['id'],{'subnet_id':subnet['id']})
+            neutron.add_gateway_router(router['id'], {'network_id': public_net_id})
+            neutron.add_interface_router(router['id'], {'subnet_id': subnet['id']})
 
     def _getTenantQuota(self, tenant, tenantType):
         quota = None
@@ -195,11 +196,11 @@ class QuotaChecker:
             if ldap_conn and ldap_tenant in map(lambda t: t[0].split(',')[0].split('=')[1],
                                                 ldap_conn.ldap_search('cn=digile.platform,ou=projects,\
                                                                        dc=forgeservicelab,dc=fi',
-                                                                       SCOPE_SUBORDINATE, attrsonly=1)):
+                                                                      SCOPE_SUBORDINATE, attrsonly=1)):
                 with novaClient.Client(username=self._AUTH_USERNAME,
-                                         api_key=self._AUTH_PASSWORD,
-                                         tenant_id=tenant,
-                                         auth_url='%s:5001/v2.0' % self._BASE_URL) as nova:
+                                       api_key=self._AUTH_PASSWORD,
+                                       tenant_id=tenant,
+                                       auth_url='%s:5001/v2.0' % self._BASE_URL) as nova:
                     try:
                         nova.security_group_rules.create(nova.security_groups.find(name='default').id,
                                                          ip_protocol='tcp',
@@ -272,4 +273,4 @@ class QuotaChecker:
             tenantsType (str): A description of the type of tenant, one of 'SDA', 'FPA' or 'FPA (CRA)'.
         """
         map(lambda t: self._enforceQuota(sanitize(t['PROJECT_NAME']), self._getTenantQuota(t, tenantsType),
-                                                  ldap_conn), tenantList)
+                                         ldap_conn), tenantList)
