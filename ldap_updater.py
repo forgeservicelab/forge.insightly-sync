@@ -253,7 +253,8 @@ class LDAPUpdater:
     def _getLDAPCompatibleAccount(self, account):
         account = account.copy()
         account['objectClass'] = 'inetOrgPerson'
-        account['employeeType'] = 'hidden' if 'True' in account.pop('isHidden') else ''
+        if extractOne('True', account.pop('isHidden'), score_cutoff=75):
+            account['employeeType'] = 'hidden'
 
         return account
 
