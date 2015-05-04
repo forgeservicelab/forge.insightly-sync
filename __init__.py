@@ -48,5 +48,5 @@ def fileToRedmine(key=None, subject=None, message=None, priority='normal'):
         }
     }
 
-    post('https://support.forgeservicelab.fi/redmine/issues.json', data=json.dumps(issue),
+    post('https://support.forgeservicelab.fi/issues.json', data=json.dumps(issue),
          headers={'Content-type': 'application/json', 'X-Redmine-API-Key': key})
