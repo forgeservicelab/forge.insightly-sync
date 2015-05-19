@@ -335,6 +335,7 @@ class LDAPUpdater:
         return record
 
     def _addAndNotify(self, dn, tenant, ldap_conn):
+        add_butler = False
         if 'Digile.Platform' in dn:
             self.updater\
                 .addUserToProject(ldap_conn.ldap_search('cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi',
