@@ -253,7 +253,8 @@ class LDAPUpdater:
     def _getLDAPCompatibleAccount(self, account):
         account = account.copy()
         account['objectClass'] = 'inetOrgPerson'
-        account['employeeType'] = 'hidden' if 'True' in account.pop('isHidden') else ''
+        if extractOne('True', account.pop('isHidden'), score_cutoff=75):
+            account['employeeType'] = 'hidden'
 
         return account
 
@@ -340,10 +341,12 @@ class LDAPUpdater:
                                                         _ldap.SCOPE_BASE,
                                                         attrlist=['employeeNumber'])[0][1]['employeeNumber'][0],
                                   tenant)
-            if not any([member.startswith('cn=butler.service') for member in tenant['uniqueMember']]):
-                tenant['uniqueMember'] += ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi']
+
+            add_butler = all([member['displayName'] != 'Butler Service' for member in tenant['member']])
 
         ldap_tenant = self._getLDAPCompatibleProject(tenant, 'groupOfUniqueNames', ldap_conn)
+        if add_butler:
+            tenant['uniqueMember'] += ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi']
         ldap_conn.ldap_add(dn, _modlist.addModlist(ldap_tenant))
 
         map(lambda ml: map(lambda e: self.mailer.sendCannedMail(e,
