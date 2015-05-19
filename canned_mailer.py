@@ -165,7 +165,7 @@ support@forgeservicelab.fi"""
             cannedMessage (str): Message to deliver, one of the keys on the CANNED_MESSAGES dictionary.
             token (str): String to replace the '{TOKEN}' placeholder on the canned message.
         """
-        message = MIMEText(cannedMessage['body'].format(TOKEN=token))
+        message = MIMEText(cannedMessage['body'].format(TOKEN=token).decode('utf-8'), 'plain', 'UTF-8')
         message['Subject'] = cannedMessage['subject']
         message['To'] = to
         message['From'] = self._FROM
