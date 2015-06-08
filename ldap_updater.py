@@ -335,6 +335,7 @@ class LDAPUpdater:
         return record
 
     def _addAndNotify(self, dn, tenant, ldap_conn):
+        add_butler = False
         if 'Digile.Platform' in dn:
             self.updater\
                 .addUserToProject(ldap_conn.ldap_search('cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi',
@@ -346,7 +347,7 @@ class LDAPUpdater:
 
         ldap_tenant = self._getLDAPCompatibleProject(tenant, 'groupOfUniqueNames', ldap_conn)
         if add_butler:
-            tenant['uniqueMember'] += ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi']
+            ldap_tenant['uniqueMember'] += ['cn=butler.service,ou=accounts,dc=forgeservicelab,dc=fi']
         ldap_conn.ldap_add(dn, _modlist.addModlist(ldap_tenant))
 
         map(lambda ml: map(lambda e: self.mailer.sendCannedMail(e,
