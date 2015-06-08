@@ -164,9 +164,9 @@ class LDAPUpdater:
     _PLACEHOLDER_NAME = 'FirstName'
     _PLACEHOLDER_SN = 'LastName'
 
-    def __init__(self, insightlyUpdater):
+    def __init__(self, insightlyUpdater, args):
         """Initialize instance."""
-        self.mailer = CannedMailer()
+        self.mailer = CannedMailer(args)
         self.updater = insightlyUpdater
 
     def _parseName(self, name):

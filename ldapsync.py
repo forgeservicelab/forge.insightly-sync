@@ -169,7 +169,7 @@ if __name__ == '__main__':
                                                          _retry_get_request(InsightlyUpdater.INSIGHTLY_CATEGORIES_URI,
                                                                             auth=(arguments['--api_key'],
                                                                                   '')).json()))[0])
-        LU = LDAPUpdater(IU)
+        LU = LDAPUpdater(IU, arguments)
         QC = QuotaChecker(username=arguments['--os_user'], password=arguments['--os_pass'],
                           tenantid=arguments['--os_tenant'], baseurl=arguments['--os_base_url'])
 
