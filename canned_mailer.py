@@ -165,8 +165,8 @@ support@forgeservicelab.fi"""
         """
         self.useMandrill = '--mandrill-username' in args.keys()
         if self.useMandrill:
-            self.mandrillUser == args['--mandrill-username']
-            self.mandrillPass == args['--mandrill-password']
+            self.mandrillUser = args['--mandrill-username']
+            self.mandrillPass = args['--mandrill-password']
 
     def sendCannedMail(self, to, cannedMessage, token):
         """Send the specified canned mail message.
